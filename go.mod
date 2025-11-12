@@ -4,7 +4,7 @@ go 1.22
 
 // replace github.com/arcology-network/common-lib => ../common-lib/
 
-replace github.com/ethereum/go-ethereum v1.14.8 => ../concurrent-evm/
+replace github.com/ethereum/go-ethereum v1.14.8 => github.com/arcology-network/concurrent-evm v0.0.0-20250714082425-8009ff40403f
 
 require (
 	github.com/ethereum/go-ethereum v1.14.8
@@ -20,10 +20,9 @@ require (
 	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb // indirect
 )
 
-require (
-	github.com/arcology-network/common-lib v1.9.1-0.20250918121719-e35aaab097f3
-	github.com/cespare/xxhash v1.1.0
-)
+require github.com/cespare/xxhash v1.1.0
+
+require github.com/arcology-network/common-lib v1.9.1-0.20251112075051-e3046bddd333
 
 require (
 	github.com/AndreasBriese/bbloom v0.0.0-20190825152654-46b345b51c96 // indirect
