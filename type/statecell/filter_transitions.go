@@ -15,7 +15,7 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package univalue
+package statecell
 
 import (
 	"strings"
@@ -28,11 +28,11 @@ import (
 // IPTransition stands for intra-process transition. It is used to filter out the fields that are not needed in inter-thread transitions to save
 // time spent on encoding and decoding.
 type IPTransition struct {
-	*Univalue
+	*StateCell
 	Err error
 }
 
-func (this IPTransition) From(v *Univalue) *Univalue {
+func (this IPTransition) From(v *StateCell) *StateCell {
 	if v == nil ||
 		v.IsReadOnly() ||
 		(v.Value() == nil && !v.IsCommitted()) { // Deletion of an non-existing entry or a read-only entry
@@ -76,14 +76,14 @@ type ITTransition struct {
 	Err error
 }
 
-func (this ITTransition) From(v *Univalue) *Univalue {
+func (this ITTransition) From(v *StateCell) *StateCell {
 	unival := IPTransition{Err: this.Err}.From(v)
 
 	// if unival == nil { // Entry deletion
 	// 	return unival
 	// }
 
-	// converted := common.IfThenDo1st(value != nil, func() *Univalue { return value.(*Univalue) }, nil)
+	// converted := common.IfThenDo1st(value != nil, func() *StateCell { return value.(*StateCell) }, nil)
 	// if converted == nil {
 	// 	return nil
 	// }
@@ -113,17 +113,17 @@ func (this ITTransition) From(v *Univalue) *Univalue {
 
 // Get property univalue entries
 type RuntimeProperty struct {
-	*Univalue
+	*StateCell
 	Err error
 }
 
-func (this RuntimeProperty) From(unival *Univalue) *Univalue {
+func (this RuntimeProperty) From(unival *StateCell) *StateCell {
 	if unival == nil || unival.Value() == nil { // Entry deletion
 		return unival
 	}
 
 	path := *unival.GetPath()
-	if strings.Contains(path[stgcommon.ETH10_ACCOUNT_FULL_LENGTH:], "/"+stgcommon.PARA_PROP_PATH) {
+	if strings.Contains(path[stgcommon.ETH_ACCOUNT_FULL_LENGTH:], stgcommon.FUNC_PROFILE_PATH) {
 		return unival
 	}
 	return nil

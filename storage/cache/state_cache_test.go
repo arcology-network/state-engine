@@ -20,12 +20,12 @@ import (
 	"testing"
 )
 
-func TestWriteCachePool(t *testing.T) {
+func TestStateCachePool(t *testing.T) {
 	// datastore := ccurlstorage.NewParallelEthMemDataStore()
 
 	// // create a pool of 16 write caches.
-	// writeCachePool := mempool.NewMempool[*WriteCache](16, 1, func() *WriteCache {
-	// 	return NewWriteCache(datastore, 32, 1)
+	// writeCachePool := mempool.NewMempool[*StateCache](16, 1, func() *StateCache {
+	// 	return NewStateCache(datastore, 32, 1)
 	// })
 
 }

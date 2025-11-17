@@ -28,7 +28,7 @@ import (
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
 	stgcommon "github.com/arcology-network/storage-committer/common"
-	platform "github.com/arcology-network/storage-committer/platform"
+	platform "github.com/arcology-network/storage-committer/type/common"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -145,7 +145,7 @@ func (this *EthDataStore) Preload(addr []byte) any {
 }
 
 // func (this *EthDataStore) GetNewIndex() interface {
-// 	Add([]*univalue.Univalue)
+// 	Add([]*statecell.StateCell)
 // 	Clear()
 // } {
 // 	return NewEthIndexer(this, 0)
@@ -189,7 +189,7 @@ func (this *EthDataStore) IfExists(key string) bool {
 
 	address := ethcommon.BytesToAddress(acctBytes)
 	if v := this.accountCache[address]; v != nil {
-		return len(key) == stgcommon.ETH10_ACCOUNT_FULL_LENGTH+1 || v.Has(key) // If the account has the key
+		return len(key) == stgcommon.ETH_ACCOUNT_FULL_LENGTH+1 || v.Has(key) // If the account has the key
 	}
 
 	// Not in cache, look up in the trie

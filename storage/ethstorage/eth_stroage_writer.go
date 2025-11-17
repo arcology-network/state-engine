@@ -23,18 +23,18 @@ import (
 
 	"github.com/arcology-network/common-lib/exp/associative"
 	"github.com/arcology-network/common-lib/exp/slice"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 )
 
 type EthStorageWriter struct {
 	*EthIndexer
 	buffer   []*EthIndexer
 	ethStore *EthDataStore
-	filter   func(*univalue.Univalue) bool // Filter function to select transitions to be indexed
+	filter   func(*statecell.StateCell) bool // Filter function to select transitions to be indexed
 	Err      error
 }
 
-func NewEthStorageWriter(ethStore *EthDataStore, version int64, filter func(*univalue.Univalue) bool) *EthStorageWriter {
+func NewEthStorageWriter(ethStore *EthDataStore, version int64, filter func(*statecell.StateCell) bool) *EthStorageWriter {
 	return &EthStorageWriter{
 		EthIndexer: NewEthIndexer(ethStore, version, filter),
 		ethStore:   ethStore,
@@ -47,8 +47,8 @@ func (this *EthStorageWriter) Precommit(isSync bool) {
 	this.EthIndexer.Finalize() // Remove the nil transitions
 	this.buffer = append(this.buffer, this.EthIndexer)
 
-	pairs := this.EthIndexer.UnorderedIndexer.Values()                                                  // Export all the pairs to be written to the db
-	this.EthIndexer.dirtyAccounts = (associative.Pairs[*Account, []*univalue.Univalue])(pairs).Firsts() // Get the accounts.
+	pairs := this.EthIndexer.UnorderedIndexer.Values()                                                    // Export all the pairs to be written to the db
+	this.EthIndexer.dirtyAccounts = (associative.Pairs[*Account, []*statecell.StateCell])(pairs).Firsts() // Get the accounts.
 
 	// Account cache holds the accounts that are being updated in the current block.
 	// TODO: Need to check if this is necessary or could be moved to the import phase instead.
@@ -56,12 +56,12 @@ func (this *EthStorageWriter) Precommit(isSync bool) {
 		this.ethStore.accountCache[(**pair).Address()] = (*pair) // Add the account to the cache
 	})
 
-	slice.ParallelForeach(pairs, runtime.NumCPU(), func(i int, acctTrans **associative.Pair[*Account, []*univalue.Univalue]) {
+	slice.ParallelForeach(pairs, runtime.NumCPU(), func(i int, acctTrans **associative.Pair[*Account, []*statecell.StateCell]) {
 		if len((*acctTrans).Second) == 0 {
 			return // All removed
 		}
 
-		keys, vals := univalue.Univalues((*acctTrans).Second).KVs()           // Get all transitions under the same account
+		keys, vals := statecell.StateCells((*acctTrans).Second).KVs()         // Get all transitions under the same account
 		err := this.EthIndexer.dirtyAccounts[i].UpdateAccountTrie(keys, vals) //
 		if err != nil {
 			this.ethStore.dbErr = errors.Join(this.ethStore.dbErr, err)

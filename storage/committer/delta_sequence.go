@@ -18,7 +18,7 @@
 //
 // delta_sequence.go provides types and methods for managing sequences of state deltas
 // in the Arcology Network's storage committer. It defines DeltaSequence and DeltaSequences,
-// which represent ordered collections of state transitions (Univalue objects), and provides
+// which represent ordered collections of state transitions (StateCell objects), and provides
 // utilities for sorting, finalizing, and extracting values and keys from these sequences.
 //
 
@@ -29,10 +29,10 @@ import (
 
 	"github.com/arcology-network/common-lib/exp/slice"
 	stgcommon "github.com/arcology-network/storage-committer/common"
-	univalue "github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 )
 
-type DeltaSequence []*univalue.Univalue
+type DeltaSequence []*statecell.StateCell
 
 func (this DeltaSequence) sort() DeltaSequence {
 	if len(this) <= 1 {
@@ -52,9 +52,9 @@ func (this DeltaSequence) sort() DeltaSequence {
 	return this
 }
 
-func (this DeltaSequence) Finalize(store stgcommon.ReadOnlyStore) *univalue.Univalue {
-	trans := []*univalue.Univalue(this)
-	slice.RemoveIf(&trans, func(_ int, v *univalue.Univalue) bool {
+func (this DeltaSequence) Finalize(store stgcommon.ReadOnlyStore) *statecell.StateCell {
+	trans := []*statecell.StateCell(this)
+	slice.RemoveIf(&trans, func(_ int, v *statecell.StateCell) bool {
 		return v.GetPath() == nil
 	})
 
@@ -78,7 +78,7 @@ func (this DeltaSequence) Finalize(store stgcommon.ReadOnlyStore) *univalue.Univ
 	return this[0]
 }
 
-func (this DeltaSequence) Finalized() *univalue.Univalue { return this[0] }
+func (this DeltaSequence) Finalized() *statecell.StateCell { return this[0] }
 
 type DeltaSequences []DeltaSequence
 

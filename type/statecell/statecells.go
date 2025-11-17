@@ -15,7 +15,7 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package univalue
+package statecell
 
 import (
 	"bytes"
@@ -27,30 +27,27 @@ import (
 	stgcommon "github.com/arcology-network/storage-committer/common"
 )
 
-type Univalues []*Univalue
+type StateCells []*StateCell
 
-func (this Univalues) To(filter interface{}) Univalues {
-	fun := filter.(interface{ From(*Univalue) *Univalue })
-	// for i, v := range this {
-	// 	this[i] = fun.From(v)
-	// }
+func (this StateCells) To(filter any) StateCells {
+	fun := filter.(interface{ From(*StateCell) *StateCell })
 
-	slice.ParallelForeach(this, 8, func(i int, _ **Univalue) {
+	slice.ParallelForeach(this, 8, func(i int, _ **StateCell) {
 		this[i] = fun.From(this[i])
 	})
 
-	slice.Remove((*[]*Univalue)(&this), nil)
+	slice.Remove((*[]*StateCell)(&this), nil)
 	return this
 }
 
-func (this Univalues) PathsContain(keyword string) Univalues {
-	return slice.CopyIf(this, func(_ int, v *Univalue) bool {
+func (this StateCells) PathsContain(keyword string) StateCells {
+	return slice.CopyIf(this, func(_ int, v *StateCell) bool {
 		return strings.Contains((*v.GetPath()), (keyword))
 	})
 }
 
 // Debugging only
-func (this Univalues) IfContains(target *Univalue) bool {
+func (this StateCells) IfContains(target *StateCell) bool {
 	for _, v := range this {
 		if v.Equal(target) {
 			return true
@@ -59,7 +56,7 @@ func (this Univalues) IfContains(target *Univalue) bool {
 	return false
 }
 
-func (this Univalues) Keys() []string {
+func (this StateCells) Keys() []string {
 	keys := make([]string, len(this))
 	for i, v := range this {
 		keys[i] = *v.GetPath()
@@ -67,7 +64,7 @@ func (this Univalues) Keys() []string {
 	return keys
 }
 
-func (this Univalues) Values() []stgcommon.Type {
+func (this StateCells) Values() []stgcommon.Type {
 	vals := make([]stgcommon.Type, len(this))
 	for i, v := range this {
 		vals[i] = v.Value().(stgcommon.Type)
@@ -75,7 +72,7 @@ func (this Univalues) Values() []stgcommon.Type {
 	return vals
 }
 
-func (this Univalues) KVs() ([]string, []stgcommon.Type) {
+func (this StateCells) KVs() ([]string, []stgcommon.Type) {
 	keys := make([]string, len(this))
 	vals := make([]stgcommon.Type, len(this))
 	for i, v := range this {
@@ -90,11 +87,11 @@ func (this Univalues) KVs() ([]string, []stgcommon.Type) {
 }
 
 // For debug only
-func (this Univalues) Checksum() [32]byte {
+func (this StateCells) Checksum() [32]byte {
 	return sha256.Sum256(this.Encode())
 }
 
-func (this Univalues) Equal(other Univalues) bool {
+func (this StateCells) Equal(other StateCells) bool {
 	for i, v := range this {
 		if !v.Equal(other[i]) {
 			return false
@@ -103,11 +100,11 @@ func (this Univalues) Equal(other Univalues) bool {
 	return true
 }
 
-func (this Univalues) Clone() Univalues {
+func (this StateCells) Clone() StateCells {
 	return slice.Clone(this)
 }
 
-func (this Univalues) SortByKey() Univalues {
+func (this StateCells) SortByKey() StateCells {
 	sort.Slice(this, func(i, j int) bool {
 		if *this[i].GetPath() != *this[j].GetPath() {
 			return (*this[i].GetPath()) < (*this[j].GetPath())
@@ -117,19 +114,19 @@ func (this Univalues) SortByKey() Univalues {
 	return this
 }
 
-func (this Univalues) SortByDepth() Univalues {
+func (this StateCells) SortByDepth() StateCells {
 	depths := make([]int, len(this))
 	for i, v := range this {
 		depths[i] = strings.Count(*v.GetPath(), "/")
 	}
 
-	slice.SortBy1st(depths, ([]*Univalue)(this), func(i, j int) bool {
+	slice.SortBy1st(depths, ([]*StateCell)(this), func(i, j int) bool {
 		return i < j
 	})
 	return this
 }
 
-func (this Univalues) Sort() Univalues {
+func (this StateCells) Sort() StateCells {
 	sorter := func(i, j int) bool {
 		if this[i].keyHash != this[j].keyHash {
 			return this[i].keyHash < this[j].keyHash
@@ -157,7 +154,7 @@ func (this Univalues) Sort() Univalues {
 	return this
 }
 
-func (this Univalues) SortByTx() {
+func (this StateCells) SortByTx() {
 	sort.Slice(this, func(i, j int) bool {
 		// if this[i].tx == this[j].tx {
 		// 	if this[i].isExpanded == this[j].isExpanded && this[j].isExpanded {
@@ -169,7 +166,7 @@ func (this Univalues) SortByTx() {
 	})
 }
 
-func Sorter(univals []*Univalue) []*Univalue {
+func Sorter(univals []*StateCell) []*StateCell {
 	sort.SliceStable(univals, func(i, j int) bool {
 		lhs := (*(univals[i].GetPath()))
 		rhs := (*(univals[j].GetPath()))

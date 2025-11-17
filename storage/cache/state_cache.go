@@ -15,13 +15,13 @@
  *   limitations under the License.
  */
 
-// write_cache.go provides the implementation of WriteCache, a read-only data backend
+// write_cache.go provides the implementation of StateCache, a read-only data backend
 // designed for caching key-value pairs in the Arcology Network storage committer module.
 // It supports efficient retrieval, insertion, and management of cached data, including
-// wildcard deletions, memory pooling, and integration with a backend store. The WriteCache
+// wildcard deletions, memory pooling, and integration with a backend store. The StateCache
 // is optimized for use in concurrent and multi-processor environments.
 //
-// Note: The WriteCache itself is read-only; all updates are performed by the committer.
+// Note: The StateCache itself is read-only; all updates are performed by the committer.
 //
 
 package cache
@@ -39,45 +39,45 @@ import (
 	mempool "github.com/arcology-network/common-lib/exp/mempool"
 	slice "github.com/arcology-network/common-lib/exp/slice"
 	stgcommon "github.com/arcology-network/storage-committer/common"
-	stgeth "github.com/arcology-network/storage-committer/platform"
+	stgeth "github.com/arcology-network/storage-committer/type/common"
 	"github.com/arcology-network/storage-committer/type/commutative"
-	univalue "github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 )
 
-// WriteCache is a read-only data backend used for caching.
-type WriteCache struct {
+// StateCache is a read-only data backend used for caching.
+type StateCache struct {
 	backend      stgcommon.ReadOnlyStore
-	kvDict       map[string]*univalue.Univalue       // Local KV lookup
+	kvDict       map[string]*statecell.StateCell     // Local KV lookup
 	committedDel []*associative.Pair[uint64, string] // Paths delete by wildcard
 	platform     stgeth.Platform
-	pool         *mempool.Mempool[*univalue.Univalue]
+	pool         *mempool.Mempool[*statecell.StateCell]
 }
 
-// NewWriteCache creates a new instance of WriteCache; the backend can be another instance of WriteCache,
+// NewStateCache creates a new instance of StateCache; the backend can be another instance of StateCache,
 // resulting in a cascading-like structure.
-func NewWriteCache(backend stgcommon.ReadOnlyStore, perPage int, numPages int, args ...any) *WriteCache {
-	return &WriteCache{
+func NewStateCache(backend stgcommon.ReadOnlyStore, perPage int, numPages int, args ...any) *StateCache {
+	return &StateCache{
 		backend:      backend,
-		kvDict:       make(map[string]*univalue.Univalue),
+		kvDict:       make(map[string]*statecell.StateCell),
 		committedDel: make([]*associative.Pair[uint64, string], 0),
 		platform:     *stgeth.NewPlatform(),
-		pool: mempool.NewMempool(perPage, numPages, func() *univalue.Univalue {
-			return new(univalue.Univalue)
-		}, (&univalue.Univalue{}).Reset),
+		pool: mempool.NewMempool(perPage, numPages, func() *statecell.StateCell {
+			return new(statecell.StateCell)
+		}, (&statecell.StateCell{}).Reset),
 	}
 }
 
-func (this *WriteCache) SetReadOnlyBackend(backend stgcommon.ReadOnlyStore) *WriteCache {
+func (this *StateCache) SetReadOnlyBackend(backend stgcommon.ReadOnlyStore) *StateCache {
 	this.backend = backend
 	return this
 }
 
-func (this *WriteCache) AddToDict(v *univalue.Univalue)         { this.kvDict[*v.GetPath()] = v }
-func (this *WriteCache) ReadOnlyStore() stgcommon.ReadOnlyStore { return this.backend }
-func (this *WriteCache) Cache() *map[string]*univalue.Univalue  { return &this.kvDict }
-func (this *WriteCache) Preload([]byte) any                     { return nil } //.
+func (this *StateCache) AddToDict(v *statecell.StateCell)        { this.kvDict[*v.GetPath()] = v }
+func (this *StateCache) ReadOnlyStore() stgcommon.ReadOnlyStore  { return this.backend }
+func (this *StateCache) Cache() *map[string]*statecell.StateCell { return &this.kvDict }
+func (this *StateCache) Preload([]byte) any                      { return nil } //.
 // Placeholder
-func (this *WriteCache) NewUnivalue() *univalue.Univalue { return this.pool.New() }
+func (this *StateCache) NewStateCell() *statecell.StateCell { return this.pool.New() }
 
 // Check if the current entry is in its parents' records. This is used when
 // the entry is deleted through a wildcard deletion, in this case, if the
@@ -95,13 +95,13 @@ func (this *WriteCache) NewUnivalue() *univalue.Univalue { return this.pool.New(
 // are gone. Unless we recursively check the parent paths, we can't tell if they are truly gone.
 // This requires a lot of queries and decoding.
 
-func (this *WriteCache) ExistsInParent(path string) bool {
+func (this *StateCache) ExistsInParent(path string) bool {
 	// No metadata for immediate children of system paths.
 	if this.platform.IsImmediateChildOfSysPath(path) {
 		return true
 	}
 
-	parentPath, _ := common.GetParentPath(path) // Get the parent path
+	parentPath, _ := stgcommon.GetParentPath(path) // Get the parent path
 	if meta, _, _ := this.FindForWrite(0, parentPath, new(commutative.Path), nil); meta != nil {
 		childKey := path[len(parentPath):]
 		if ok, _ := meta.(*commutative.Path).Exists(childKey); ok { // Add the path to the parent path
@@ -113,14 +113,14 @@ func (this *WriteCache) ExistsInParent(path string) bool {
 
 // Get the raw value directly, put it in an empty univalue without recording
 // the access at the univalue level. Won't update the kvDict.
-func (this *WriteCache) FindForRead(tx uint64, path string, T any, do func(*univalue.Univalue)) (any, *univalue.Univalue, bool) {
+func (this *StateCache) FindForRead(tx uint64, path string, T any, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
 	if !this.ExistsInParent(path) {
-		return nil, this.NewUnivalue().Init(tx, path, 0, 0, 0, nil, false), false
+		return nil, this.NewStateCell().Init(tx, path, 0, 0, 0, nil, false), false
 	}
 	return this.FindForWrite(tx, path, T, do) // Find the value in the cache
 }
 
-func (this *WriteCache) FindForWrite(tx uint64, path string, T any, do func(*univalue.Univalue)) (any, *univalue.Univalue, bool) {
+func (this *StateCache) FindForWrite(tx uint64, path string, T any, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
 	if univ, ok := this.kvDict[path]; ok {
 		return univ.Value(), univ, true // From cache
 	}
@@ -138,7 +138,7 @@ func (this *WriteCache) FindForWrite(tx uint64, path string, T any, do func(*uni
 	return univ.Value(), univ, false
 }
 
-func (this *WriteCache) Write(tx uint64, path string, newVal any, args ...any) (int64, error) {
+func (this *StateCache) Write(tx uint64, path string, newVal any, args ...any) (int64, error) {
 	if newVal != nil && newVal.(stgcommon.Type).TypeID() == uint8(reflect.Invalid) { // Neither a valid replacement nor a delete operation.
 		return 0, errors.New("Error: Unknown data type !")
 	}
@@ -146,15 +146,15 @@ func (this *WriteCache) Write(tx uint64, path string, newVal any, args ...any) (
 	univ, err := this.write(tx, path, newVal)
 	sizeDif := this.DiffSize(tx, path, newVal) // Update the size difference
 	if len(args) > 0 && args[0] != nil {
-		args[0].(func(*univalue.Univalue, int64))(univ, sizeDif) // Call the callback function if provided
+		args[0].(func(*statecell.StateCell, int64))(univ, sizeDif) // Call the callback function if provided
 	}
 	return sizeDif, err
 }
 
-func (this *WriteCache) write(tx uint64, path string, value any) (*univalue.Univalue, error) {
-	parentPath, _ := common.GetParentPath(path)
-	univ := univalue.NewUnivalue(tx, path, 0, 1, 0, value, nil) // Default univalue wrapper
-	if this.IfExists(parentPath) || tx == stgcommon.SYSTEM {    // The parent path exists or to inject the path directly
+func (this *StateCache) write(tx uint64, path string, value any) (*statecell.StateCell, error) {
+	parentPath, _ := stgcommon.GetParentPath(path)
+	univ := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default univalue wrapper
+	if this.IfExists(parentPath) || tx == stgcommon.SYSTEM {      // The parent path exists or to inject the path directly
 		var err error
 		var inCache bool
 
@@ -184,7 +184,7 @@ func (this *WriteCache) write(tx uint64, path string, value any) (*univalue.Univ
 
 // Get the raw value directly WITHOUT tracking the accessing record.
 // Users need to count access themselves.
-func (this *WriteCache) Retrive(path string, T any) (any, error) {
+func (this *StateCache) Retrive(path string, T any) (any, error) {
 	typedv, _, _ := this.FindForRead(stgcommon.SYSTEM, path, T, nil)
 	if typedv == nil || typedv.(stgcommon.Type).IsDeltaApplied() {
 		return typedv, nil
@@ -206,35 +206,34 @@ func (this *WriteCache) Retrive(path string, T any) (any, error) {
 
 // The load the data from the backend. Since the state is already isCommitted, it is read-only.
 // No need to add it to the kvDict or keep track of the access.
-func (this *WriteCache) LoadFromCommitted(tx uint64, path string, T any) *univalue.Univalue {
+func (this *StateCache) LoadFromCommitted(tx uint64, path string, T any) *statecell.StateCell {
 	var typedv any
 	if backend := this.ReadOnlyStore(); backend != nil {
-		typedv, _ = backend.Retrive(path, T) // The backend could also be another instance of WriteCache.
+		typedv, _ = backend.Retrive(path, T) // The backend could also be another instance of StateCache.
 	}
-	return this.NewUnivalue().Init(tx, path, 0, 0, 0, typedv, typedv != nil)
+	return this.NewStateCell().Init(tx, path, 0, 0, 0, typedv, typedv != nil)
 }
 
 // This function specifically retrieves the value from the backend without any tracking.
-func (this *WriteCache) ReadStorage(key string, T any) (any, error) {
+func (this *StateCache) ReadStorage(key string, T any) (any, error) {
 	if this.backend != nil {
 		return this.backend.ReadStorage(key, T)
 	}
 	return nil, errors.New("Error: The backend is nil")
 }
 
-func (this *WriteCache) Read(tx uint64, path string, T any) (any, any, uint64) {
-	_, univalue, _ := this.FindForRead(tx, path, T, this.AddToDict) // Get the univalue wrapper
+func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
+	_, stcell, _ := this.FindForRead(tx, path, T, this.AddToDict) // Get the univalue wrapper
 
 	// need to check if it is in the memory. If so gas price should be 3 instead.
 	dataSize := stgcommon.MIN_READ_SIZE
-	if typedv := univalue.Value(); typedv != nil {
+	if typedv := stcell.Value(); typedv != nil {
 		dataSize = typedv.(stgcommon.Type).MemSize()
 	}
-
-	return univalue.Get(tx, path, nil), univalue, dataSize
+	return stcell.Get(tx, path, nil), stcell, dataSize
 }
 
-func (this *WriteCache) DiffSize(tx uint64, path string, newVal any) int64 {
+func (this *StateCache) DiffSize(tx uint64, path string, newVal any) int64 {
 	oldSize := int64(0)
 	if oldVal, _, _ := this.FindForRead(tx, path, newVal, nil); oldVal != nil {
 		oldSize += int64(oldVal.(stgcommon.Type).MemSize())
@@ -249,16 +248,16 @@ func (this *WriteCache) DiffSize(tx uint64, path string, newVal any) int64 {
 }
 
 // Get the raw value directly, skip the access counting at the univalue level
-func (this *WriteCache) GetIfCached(path string) (any, bool) {
+func (this *StateCache) GetIfCached(path string) (any, bool) {
 	univ, ok := this.kvDict[path]
 	return univ, ok
 }
 
 // Check if the path exists in the writecache or the backend.
 // No access count is recorded. Only for internal use. Not exposed to the public API.
-func (this *WriteCache) IfExists(path string) bool {
-	// Any path shorter than the ETH10_ACCOUNT_PREFIX is a system path.
-	if stgcommon.ETH10_ACCOUNT_PREFIX_LENGTH >= len(path) {
+func (this *StateCache) IfExists(path string) bool {
+	// Any path shorter than the ETH_ACCOUNT_PREFIX is a system path.
+	if stgcommon.ETH_ACCOUNT_PREFIX_LENGTH >= len(path) {
 		return true
 	}
 
@@ -276,7 +275,7 @@ func (this *WriteCache) IfExists(path string) bool {
 
 // The function is used to add the transitions to the writecache. It assumes that the transition's
 // parent path has been added to the writecache already. Otherwise, it won't succeed.
-func (this *WriteCache) set(v *univalue.Univalue) *WriteCache {
+func (this *StateCache) set(v *statecell.StateCell) *StateCache {
 	if v == nil {
 		return this
 	}
@@ -291,45 +290,45 @@ func (this *WriteCache) set(v *univalue.Univalue) *WriteCache {
 
 // The function is used to add the transitions to the writecache, which usually comes from
 // the child writecaches. It usually happens with the sub processeses are completed.
-func (this *WriteCache) Insert(transitions []*univalue.Univalue) *WriteCache {
+func (this *StateCache) Insert(transitions []*statecell.StateCell) *StateCache {
 	if len(transitions) == 0 {
 		return this
 	}
 
 	// Filter out the path creations transitions as they will be treated differently.
-	newPathCreations := slice.MoveIf(&transitions, func(_ int, v *univalue.Univalue) bool {
+	newPathCreations := slice.MoveIf(&transitions, func(_ int, v *statecell.StateCell) bool {
 		return common.IsPath(*v.GetPath()) && !v.IsCommitted()
 	})
 
 	// Not necessary to sort the path creations at the moment,
 	// but it is good for the future if multiple level containers are available
-	newPathCreations = univalue.Univalues(univalue.Sorter(newPathCreations))
-	slice.Foreach(newPathCreations, func(_ int, v **univalue.Univalue) {
+	newPathCreations = statecell.StateCells(statecell.Sorter(newPathCreations))
+	slice.Foreach(newPathCreations, func(_ int, v **statecell.StateCell) {
 		(*v).CopyTo(this) // Write back to the parent writecache
 	})
 
 	// Remove the changes to the existing path meta, as they will be updated automatically
 	// when inserting or deleting sub elements. This is just simpler and more straightforward
 	// than to keep track of the meta changes and merge them back the meta changes.
-	transitions = slice.RemoveIf(&transitions, func(_ int, v *univalue.Univalue) bool {
+	transitions = slice.RemoveIf(&transitions, func(_ int, v *statecell.StateCell) bool {
 		return common.IsPath(*v.GetPath())
 	})
 
 	// Write back to the parent writecache
-	slice.Foreach(transitions, func(_ int, v **univalue.Univalue) {
+	slice.Foreach(transitions, func(_ int, v **statecell.StateCell) {
 		(*v).CopyTo(this)
 	})
 	return this
 }
 
 // Reset the writecache to the initial state for the next round of processing.
-func (this *WriteCache) Clear() *WriteCache {
+func (this *StateCache) Clear() *StateCache {
 	this.pool.Reset()
 	clear(this.kvDict)
 	return this
 }
 
-func (this *WriteCache) Equal(other *WriteCache) bool {
+func (this *StateCache) Equal(other *StateCache) bool {
 	thisBuffer := mapi.Values(this.kvDict)
 	sort.SliceStable(thisBuffer, func(i, j int) bool {
 		return *thisBuffer[i].GetPath() < *thisBuffer[j].GetPath()
@@ -346,35 +345,35 @@ func (this *WriteCache) Equal(other *WriteCache) bool {
 
 // Export the content of the writecache to two arrays of univalues.
 // One for the accesses and the other for the transitions.
-func (this *WriteCache) Export(preprocs ...func([]*univalue.Univalue) []*univalue.Univalue) []*univalue.Univalue {
+func (this *StateCache) Export(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) []*statecell.StateCell {
 	buffer := mapi.Values(this.kvDict)
 	for _, proc := range preprocs {
-		buffer = common.IfThenDo1st(proc != nil, func() []*univalue.Univalue {
+		buffer = common.IfThenDo1st(proc != nil, func() []*statecell.StateCell {
 			return proc(buffer)
 		}, buffer)
 	}
-	slice.RemoveIf(&buffer, func(_ int, v *univalue.Univalue) bool {
+	slice.RemoveIf(&buffer, func(_ int, v *statecell.StateCell) bool {
 		return v.PathLookupOnly() // Remove peeks and local values
 	})
 
-	// univalue.Univalues(buffer).PrintUnsorted() // For debugging purpose
+	// statecell.StateCell(buffer).PrintUnsorted() // For debugging purpose
 	buffer = append(buffer, this.WildcardsToUnivalue()...)
 	return buffer
 }
 
 // For the testing purpose, export the content of the writecache to two arrays of univalues and filter.
-func (this *WriteCache) ExportAll(preprocs ...func([]*univalue.Univalue) []*univalue.Univalue) ([]*univalue.Univalue, []*univalue.Univalue) {
+func (this *StateCache) ExportAll(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) ([]*statecell.StateCell, []*statecell.StateCell) {
 	all := this.Export()
-	accesses := univalue.Univalues(slice.Clone(all)).To(univalue.ITAccess{})
-	transitions := univalue.Univalues(slice.Clone(all)).To(univalue.ITTransition{})
+	accesses := statecell.StateCells(slice.Clone(all)).To(statecell.ITAccess{})
+	transitions := statecell.StateCells(slice.Clone(all)).To(statecell.ITTransition{})
 	return accesses, transitions
 }
 
-func (this *WriteCache) KVs() ([]string, []stgcommon.Type) {
-	transitions := univalue.Univalues(slice.Clone(this.Export(univalue.Sorter))).To(univalue.ITTransition{})
+func (this *StateCache) KVs() ([]string, []stgcommon.Type) {
+	transitions := statecell.StateCells(slice.Clone(this.Export(statecell.Sorter))).To(statecell.ITTransition{})
 
 	values := make([]stgcommon.Type, len(transitions))
-	keys := slice.ParallelTransform(transitions, 4, func(i int, v *univalue.Univalue) string {
+	keys := slice.ParallelTransform(transitions, 4, func(i int, v *statecell.StateCell) string {
 		values[i] = v.Value().(stgcommon.Type)
 		return *v.GetPath()
 	})
@@ -383,7 +382,7 @@ func (this *WriteCache) KVs() ([]string, []stgcommon.Type) {
 
 // This function is used to write the cache to the data source directly to bypass all the intermediate steps,
 // including the conflict detection.
-func (this *WriteCache) Print() {
+func (this *StateCache) Print() {
 	values := mapi.Values(this.kvDict)
 	sort.SliceStable(values, func(i, j int) bool {
 		return *values[i].GetPath() < *values[j].GetPath()
@@ -396,17 +395,17 @@ func (this *WriteCache) Print() {
 }
 
 // Calculate the checksum of the writecache for integrity check.
-func (this *WriteCache) Checksum() [32]byte {
+func (this *StateCache) Checksum() [32]byte {
 	values := mapi.Values(this.kvDict)
 	sort.SliceStable(values, func(i, j int) bool {
 		return *values[i].GetPath() < *values[j].GetPath()
 	})
-	return univalue.Univalues(values).Checksum()
+	return statecell.StateCells(values).Checksum()
 }
 
 // Read the value from the backend. This function is used for
 // GetCommittedState() in Eth interface for gas refund related code.
-func (this *WriteCache) ReadCommitted(tx uint64, key string, T any) (any, uint64) {
+func (this *StateCache) ReadCommitted(tx uint64, key string, T any) (any, uint64) {
 	// Just to leave a record for conflict detection. This is different from the original Ethereum implementation.
 	// In Ethereum, there is no such concept as the multiprocessor，so the isCommitted state can only come from the
 	// previous block or the transactions before the current one. But in the multiprocessor, the isCommitted state

@@ -15,7 +15,7 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// WriteCache is a read-only data store used for caching.
+// StateCache is a read-only data store used for caching.
 
 package cache
 
@@ -25,78 +25,78 @@ import (
 	slice "github.com/arcology-network/common-lib/exp/slice"
 	intf "github.com/arcology-network/storage-committer/common"
 	stgcommon "github.com/arcology-network/storage-committer/common"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 )
 
 const (
 	NUM_SHARDS = 32
 )
 
-// ShardedWriteCache is a lockless data strucuture that wraps multiple WriteCache instances together, each of
+// ShardedStateCache is a lockless data strucuture that wraps multiple StateCache instances together, each of
 // which is responsible for a subset of the data. It can be updated in parallel when a transaction generation
 // is completed. But it isn't thread-safe.
-type ShardedWriteCache struct {
+type ShardedStateCache struct {
 	backend intf.ReadOnlyStore
-	caches  [NUM_SHARDS]*WriteCache
+	caches  [NUM_SHARDS]*StateCache
 	hasher  func(string) uint64
-	queue   chan *[]*univalue.Univalue
+	queue   chan *[]*statecell.StateCell
 }
 
-func NewShardedWriteCache(backend intf.ReadOnlyStore, perPage int, numPages int, hasher func(string) uint64, args ...interface{}) *ShardedWriteCache {
-	writeCache := &ShardedWriteCache{
+func NewShardedStateCache(backend intf.ReadOnlyStore, perPage int, numPages int, hasher func(string) uint64, args ...interface{}) *ShardedStateCache {
+	writeCache := &ShardedStateCache{
 		backend: backend,
 		hasher:  hasher,
 	}
 
 	for i := 0; i < len(writeCache.caches); i++ {
-		writeCache.caches[i] = NewWriteCache(backend, perPage, numPages, args...)
+		writeCache.caches[i] = NewStateCache(backend, perPage, numPages, args...)
 	}
-	writeCache.queue = make(chan *[]*univalue.Univalue, 64)
+	writeCache.queue = make(chan *[]*statecell.StateCell, 64)
 	return writeCache
 }
 
-func (this *ShardedWriteCache) ReadOnlyStore() intf.ReadOnlyStore { return this.backend }
-func (this *ShardedWriteCache) Cache() [NUM_SHARDS]*WriteCache    { return this.caches }
+func (this *ShardedStateCache) ReadOnlyStore() intf.ReadOnlyStore { return this.backend }
+func (this *ShardedStateCache) Cache() [NUM_SHARDS]*StateCache    { return this.caches }
 
-func (this *ShardedWriteCache) NewUnivalue(k string) *univalue.Univalue {
-	return this.caches[this.hasher(k)].NewUnivalue()
+func (this *ShardedStateCache) NewStateCell(k string) *statecell.StateCell {
+	return this.caches[this.hasher(k)].NewStateCell()
 }
 
 // ONLY THE TX WRITECACHE HAS THE NEED TO SUPPORT GET OR NOW
-// func (this *ShardedWriteCache) RetriveOrCreate(tx uint64, path string, T any) (*univalue.Univalue, bool) {
+// func (this *ShardedStateCache) RetriveOrCreate(tx uint64, path string, T any) (*statecell.StateCell, bool) {
 // 	return this.caches[this.hasher(path)%NUM_SHARDS].RetriveOrCreate(tx, path, T)
 // }
 
-func (this *ShardedWriteCache) Read(tx uint64, path string, T any) (interface{}, interface{}, uint64) {
+func (this *ShardedStateCache) Read(tx uint64, path string, T any) (interface{}, interface{}, uint64) {
 	return this.caches[this.hasher(path)%NUM_SHARDS].Read(tx, path, T)
 }
 
-func (this *ShardedWriteCache) Write(tx uint64, path string, value interface{}) (int64, error) {
+func (this *ShardedStateCache) Write(tx uint64, path string, value interface{}) (int64, error) {
 	return this.caches[this.hasher(path)%NUM_SHARDS].Write(tx, path, value)
 }
 
-// func (this *ShardedWriteCache) GetIfCached(path string) (interface{}, bool) {
+// func (this *ShardedStateCache) GetIfCached(path string) (interface{}, bool) {
 // 	return this.caches[this.hasher(path)%NUM_SHARDS].GetIfCached(path)
 // }
 
-func (this *ShardedWriteCache) Retrive(path string, T any) (interface{}, error) {
+func (this *ShardedStateCache) Retrive(path string, T any) (interface{}, error) {
 	return this.caches[this.hasher(path)%NUM_SHARDS].Retrive(path, T)
 }
 
-func (this *ShardedWriteCache) IfExists(path string) bool {
+func (this *ShardedStateCache) IfExists(path string) bool {
 	return this.caches[this.hasher(path)%NUM_SHARDS].IfExists(path)
 }
 
-func (this *ShardedWriteCache) Import(transitions []*univalue.Univalue) *ShardedWriteCache {
-	univalue.Univalues(transitions).SortByDepth() // To ensure that the parent  is inserted before the child
+func (this *ShardedStateCache) Import(transitions []*statecell.StateCell) *ShardedStateCache {
+	statecell.StateCells(transitions).SortByDepth() // To ensure that the parent  is inserted before the child
 
 	// Precalculate the shard ID of each transition
-	shards := slice.ParallelTransform(transitions, runtime.NumCPU(), func(i int, v *univalue.Univalue) uint64 {
+	shards := slice.ParallelTransform(transitions, runtime.NumCPU(), func(i int, v *statecell.StateCell) uint64 {
 		return this.hasher(*(v).GetPath())
 	})
 
 	// Insert each transition into the appropriate cache
-	slice.ParallelForeach(this.caches[:], runtime.NumCPU(), func(num int, shard **WriteCache) {
+	slice.ParallelForeach(this.caches[:], runtime.NumCPU(), func(num int, shard **StateCache) {
 		for i := 0; i < len(transitions); i++ {
 			if shards[i] == uint64(num) {
 				this.caches[num].set(transitions[i])
@@ -107,16 +107,16 @@ func (this *ShardedWriteCache) Import(transitions []*univalue.Univalue) *Sharded
 }
 
 // Reset the writecache to the initial state for the next round of processing.
-// func (this *ShardedWriteCache) Precommit([]uint32) [32]byte { return [32]byte{} }
+// func (this *ShardedStateCache) Precommit([]uint32) [32]byte { return [32]byte{} }
 
-func (this *ShardedWriteCache) Clear() *ShardedWriteCache {
-	slice.ParallelForeach(this.caches[:], runtime.NumCPU(), func(i int, wcache **WriteCache) {
+func (this *ShardedStateCache) Clear() *ShardedStateCache {
+	slice.ParallelForeach(this.caches[:], runtime.NumCPU(), func(i int, wcache **StateCache) {
 		(*wcache).Clear()
 	})
 	return this
 }
 
-func (this *ShardedWriteCache) Equal(other *ShardedWriteCache) bool {
+func (this *ShardedStateCache) Equal(other *ShardedStateCache) bool {
 	for i := 0; i < len(this.caches); i++ {
 		if !this.caches[i].Equal(other.caches[i]) {
 			return false
@@ -125,7 +125,7 @@ func (this *ShardedWriteCache) Equal(other *ShardedWriteCache) bool {
 	return true
 }
 
-func (this *ShardedWriteCache) KVs() ([][]string, [][]stgcommon.Type) {
+func (this *ShardedStateCache) KVs() ([][]string, [][]stgcommon.Type) {
 	keySet, valueSet := make([][]string, len(this.caches)), make([][]stgcommon.Type, len(this.caches))
 	for i := 0; i < len(this.caches); i++ {
 		keySet[i], valueSet[i] = this.caches[i].KVs()
@@ -133,8 +133,8 @@ func (this *ShardedWriteCache) KVs() ([][]string, [][]stgcommon.Type) {
 	return keySet, valueSet
 }
 
-func (this *ShardedWriteCache) Export(preprocs ...func([]*univalue.Univalue) []*univalue.Univalue) []*univalue.Univalue {
-	valueSet := make([][]*univalue.Univalue, len(this.caches))
+func (this *ShardedStateCache) Export(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) []*statecell.StateCell {
+	valueSet := make([][]*statecell.StateCell, len(this.caches))
 	for i := 0; i < len(this.caches); i++ {
 		valueSet[i] = this.caches[i].Export()
 	}

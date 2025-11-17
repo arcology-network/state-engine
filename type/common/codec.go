@@ -15,7 +15,7 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package ethplatform
+package common
 
 import (
 	stgcommon "github.com/arcology-network/storage-committer/common"

@@ -21,8 +21,8 @@ import (
 	"github.com/arcology-network/common-lib/exp/associative"
 	"github.com/arcology-network/common-lib/exp/slice"
 	"github.com/arcology-network/common-lib/storage/indexer"
-	platform "github.com/arcology-network/storage-committer/platform"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	platform "github.com/arcology-network/storage-committer/type/common"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
@@ -30,29 +30,29 @@ import (
 // An index by account address, transitions have the same Eth account address will be put together in a list
 // This is for ETH storage, concurrent container related sub-paths won't be put into this index.
 type EthIndexer struct {
-	filter  func(tran *univalue.Univalue) bool // Post processing function to filter transitions.
+	filter  func(tran *statecell.StateCell) bool // Post processing function to filter transitions.
 	Version int64
-	*indexer.UnorderedIndexer[[20]byte, *univalue.Univalue, *associative.Pair[*Account, []*univalue.Univalue]]
+	*indexer.UnorderedIndexer[[20]byte, *statecell.StateCell, *associative.Pair[*Account, []*statecell.StateCell]]
 	dirtyAccounts []*Account
 	// err           error
 }
 
-func NewEthIndexer(store *EthDataStore, Version int64, filter func(tran *univalue.Univalue) bool) *EthIndexer {
+func NewEthIndexer(store *EthDataStore, Version int64, filter func(tran *statecell.StateCell) bool) *EthIndexer {
 	idxer := (indexer.NewUnorderedIndexer(
 		nil,
-		func(v *univalue.Univalue) ([20]byte, bool) {
+		func(v *statecell.StateCell) ([20]byte, bool) {
 			addr, _ := hexutil.Decode(platform.GetAccountAddr(*v.GetPath()))
 			return ethcommon.BytesToAddress(addr), true //platform.IsEthPath(*v.GetPath())
 		},
 
-		func(addr [20]byte, v *univalue.Univalue) *associative.Pair[*Account, []*univalue.Univalue] {
-			return &associative.Pair[*Account, []*univalue.Univalue]{
+		func(addr [20]byte, v *statecell.StateCell) *associative.Pair[*Account, []*statecell.StateCell] {
+			return &associative.Pair[*Account, []*statecell.StateCell]{
 				First:  store.Preload(addr[:]).(*Account),
-				Second: []*univalue.Univalue{v},
+				Second: []*statecell.StateCell{v},
 			}
 		},
 
-		func(_ [20]byte, v *univalue.Univalue, pair **associative.Pair[*Account, []*univalue.Univalue]) {
+		func(_ [20]byte, v *statecell.StateCell, pair **associative.Pair[*Account, []*statecell.StateCell]) {
 			(**pair).Second = append((**pair).Second, v)
 		},
 	))
@@ -65,8 +65,8 @@ func NewEthIndexer(store *EthDataStore, Version int64, filter func(tran *univalu
 	}
 }
 
-func (this *EthIndexer) Import(trans []*univalue.Univalue) {
-	ethTrans := slice.CopyIf(trans, func(_ int, v *univalue.Univalue) bool {
+func (this *EthIndexer) Import(trans []*statecell.StateCell) {
+	ethTrans := slice.CopyIf(trans, func(_ int, v *statecell.StateCell) bool {
 		return v.GetPath() != nil && this.filter(v) // None nil Eth Storage paths only.
 	})
 	this.UnorderedIndexer.Import(ethTrans)
@@ -74,13 +74,13 @@ func (this *EthIndexer) Import(trans []*univalue.Univalue) {
 
 // Remove the nil transitions from the index, because they are set by
 func (this *EthIndexer) Finalize() {
-	this.ParallelForeachDo(func(_ [20]byte, v **associative.Pair[*Account, []*univalue.Univalue]) {
-		slice.RemoveIf(&((**v).Second), func(_ int, v *univalue.Univalue) bool { return v.GetPath() == nil })
+	this.ParallelForeachDo(func(_ [20]byte, v **associative.Pair[*Account, []*statecell.StateCell]) {
+		slice.RemoveIf(&((**v).Second), func(_ int, v *statecell.StateCell) bool { return v.GetPath() == nil })
 	})
 
 	// Remove accounts that have no transitions left after cleanning up
 	pairs := this.UnorderedIndexer.Values()
-	slice.RemoveIf(&pairs, func(_ int, v *associative.Pair[*Account, []*univalue.Univalue]) bool { return len(v.Second) == 0 })
+	slice.RemoveIf(&pairs, func(_ int, v *associative.Pair[*Account, []*statecell.StateCell]) bool { return len(v.Second) == 0 })
 }
 
 // Merge indexers so they can be updated at once.

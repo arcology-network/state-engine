@@ -21,28 +21,28 @@ import (
 	"runtime"
 
 	"github.com/arcology-network/common-lib/exp/slice"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 	// intf "github.com/arcology-network/storage-committer/interfaces"
 )
 
 // An index by account address, transitions have the same Eth account address will be put together in a list
 // This is for ETH storage, concurrent container related sub-paths won't be put into this index.
 type LiveStgIndexer struct {
-	buffer       []*univalue.Univalue
-	importBuffer []*univalue.Univalue
+	buffer       []*statecell.StateCell
+	importBuffer []*statecell.StateCell
 	liveStg      *LiveStorage
 
 	partitionIDs  []uint64
 	keyBuffer     []string
 	valueBuffer   []any
 	encodedBuffer [][]byte //The encoded buffer contains the encoded values
-	filter        func(*univalue.Univalue) bool
+	filter        func(*statecell.StateCell) bool
 }
 
-func NewLiveStgIndexer(liveStg *LiveStorage, _ int64, filter func(*univalue.Univalue) bool) *LiveStgIndexer {
+func NewLiveStgIndexer(liveStg *LiveStorage, _ int64, filter func(*statecell.StateCell) bool) *LiveStgIndexer {
 	return &LiveStgIndexer{
-		// buffer:       []*univalue.Univalue{},
-		importBuffer: []*univalue.Univalue{},
+		// buffer:       []*statecell.StateCell{},
+		importBuffer: []*statecell.StateCell{},
 		liveStg:      liveStg,
 
 		partitionIDs:  []uint64{},
@@ -55,7 +55,7 @@ func NewLiveStgIndexer(liveStg *LiveStorage, _ int64, filter func(*univalue.Univ
 
 // An index by account address, transitions have the same Eth account address will be put together in a list
 // This is for ETH storage, concurrent container related sub-paths won't be put into this index.
-func (this *LiveStgIndexer) Import(trans []*univalue.Univalue) {
+func (this *LiveStgIndexer) Import(trans []*statecell.StateCell) {
 	for i := range trans {
 		if trans[i].GetPath() != nil && this.filter(trans[i]) {
 			this.importBuffer = append(this.importBuffer, trans[i])
@@ -65,17 +65,17 @@ func (this *LiveStgIndexer) Import(trans []*univalue.Univalue) {
 
 func (this *LiveStgIndexer) PreCommit() {
 	this.buffer = this.importBuffer
-	this.importBuffer = []*univalue.Univalue{}
+	this.importBuffer = []*statecell.StateCell{}
 }
 
 func (this *LiveStgIndexer) Finalize() {
-	slice.RemoveIf(&this.buffer, func(_ int, v *univalue.Univalue) bool {
+	slice.RemoveIf(&this.buffer, func(_ int, v *statecell.StateCell) bool {
 		return v.GetPath() == nil
 	}) // Remove the transitions that are marked
 
 	// Extract the keys and values from the buffer
 	this.keyBuffer = make([]string, len(this.buffer))
-	this.valueBuffer = slice.ParallelTransform(this.buffer, runtime.NumCPU(), func(i int, v *univalue.Univalue) any {
+	this.valueBuffer = slice.ParallelTransform(this.buffer, runtime.NumCPU(), func(i int, v *statecell.StateCell) any {
 		this.keyBuffer[i] = *v.GetPath()
 		return v.Value()
 	})

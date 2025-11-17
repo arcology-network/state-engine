@@ -20,12 +20,12 @@ package cache
 import (
 	"bytes"
 
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 )
 
 // PreloadMatched preloads the paths that match the wildcard delete path that are about to be deleted by the
 // the current write operation.
-func (this *WriteCache) MatchWildcard(path string, T any) (bool, *univalue.Univalue) {
+func (this *StateCache) MatchWildcard(path string, T any) (bool, *statecell.StateCell) {
 	for _, wildcardPath := range this.committedDel {
 		if len(path) < len(wildcardPath.Second) {
 			continue
@@ -41,11 +41,11 @@ func (this *WriteCache) MatchWildcard(path string, T any) (bool, *univalue.Univa
 	return false, nil
 }
 
-// WildcardsToUnivalue converts wildcard paths to Univalue for exporting.
-func (this *WriteCache) WildcardsToUnivalue() []*univalue.Univalue {
-	univs := make([]*univalue.Univalue, 0)
+// WildcardsToUnivalue converts wildcard paths to StateCell for exporting.
+func (this *StateCache) WildcardsToUnivalue() []*statecell.StateCell {
+	univs := make([]*statecell.StateCell, 0)
 	for _, wildcardPath := range this.committedDel {
-		newV := univalue.NewUnivalue(wildcardPath.First, wildcardPath.Second+"*", 0, 1, 0, nil, nil)
+		newV := statecell.NewStateCell(wildcardPath.First, wildcardPath.Second+"*", 0, 1, 0, nil, nil)
 		newV.SetPreexist(true) // Mark as pre-existing, so it pass through the filter.
 		univs = append(univs, newV)
 	}

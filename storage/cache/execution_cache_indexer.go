@@ -20,31 +20,31 @@ import (
 	common "github.com/arcology-network/common-lib/common"
 	"github.com/arcology-network/common-lib/exp/slice"
 	intf "github.com/arcology-network/storage-committer/common"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 )
 
 // ExecutionCacheIndexer is the simpliest of all indexers. It does not index anything, just stores the transitions.
 type ExecutionCacheIndexer struct {
 	version int64
-	buffer  []*univalue.Univalue
-	filter  func(tran *univalue.Univalue) bool
+	buffer  []*statecell.StateCell
+	filter  func(tran *statecell.StateCell) bool
 }
 
-func NewExecutionCacheIndexer(_ *intf.ReadOnlyStore, version int64, filter func(tran *univalue.Univalue) bool) *ExecutionCacheIndexer {
+func NewExecutionCacheIndexer(_ *intf.ReadOnlyStore, version int64, filter func(tran *statecell.StateCell) bool) *ExecutionCacheIndexer {
 	return &ExecutionCacheIndexer{
-		filter:  common.IfThen(filter == nil, func(tran *univalue.Univalue) bool { return true }, filter),
+		filter:  common.IfThen(filter == nil, func(tran *statecell.StateCell) bool { return true }, filter),
 		version: version,
-		buffer:  []*univalue.Univalue{},
+		buffer:  []*statecell.StateCell{},
 	}
 }
 
 // An index by account address, transitions have the same Eth account address will be put together in a list
 // This is for ETH storage, concurrent container related sub-paths won't be put into this index.
-func (this *ExecutionCacheIndexer) Import(transitions []*univalue.Univalue) {
+func (this *ExecutionCacheIndexer) Import(transitions []*statecell.StateCell) {
 	this.buffer = append(this.buffer, transitions...)
 }
 
 // Remove nil transitions due to conflicts.
 func (this *ExecutionCacheIndexer) Finalize() {
-	slice.RemoveIf((*[]*univalue.Univalue)(&this.buffer), func(i int, v *univalue.Univalue) bool { return v.GetPath() == nil })
+	slice.RemoveIf((*[]*statecell.StateCell)(&this.buffer), func(i int, v *statecell.StateCell) bool { return v.GetPath() == nil })
 }

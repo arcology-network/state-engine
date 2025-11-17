@@ -15,7 +15,7 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package univalue
+package statecell
 
 import (
 	"fmt"
@@ -43,14 +43,14 @@ func TestUnivalueCodecUint64(t *testing.T) {
 	alice := AliceAccount()
 
 	u64 := commutative.NewBoundedUint64(0, 100)
-	in := NewUnivalue(1, "blcc://eth1.0/account/"+alice+"/storage/ctrn-0/elem-000", 3, 4, 0, u64, nil)
+	in := NewStateCell(1, "blcc://eth1.0/account/"+alice+"/storage/ctrn-0/elem-000", 3, 4, 0, u64, nil)
 	in.reads = 1
 	in.writes = 2
 	in.deltaWrites = 3
 	in.isCommitted = true
 
 	bytes := in.Encode()
-	v := (&Univalue{}).Decode(bytes).(*Univalue)
+	v := (&StateCell{}).Decode(bytes).(*StateCell)
 
 	property := v.Property
 	inProperty := in.Property
@@ -69,13 +69,13 @@ func TestUnivalueCodecU256(t *testing.T) {
 	alice := AliceAccount() /* Commutative Int64 Test */
 	u256 := commutative.NewBoundedU256(uint256.NewInt(0), uint256.NewInt(100))
 
-	in := NewUnivalue(1, "blcc://eth1.0/account/"+alice+"/storage/ctrn-0/elem-000", 3, 4, 0, u256, nil)
+	in := NewStateCell(1, "blcc://eth1.0/account/"+alice+"/storage/ctrn-0/elem-000", 3, 4, 0, u256, nil)
 	in.reads = 1
 	in.writes = 2
 	in.deltaWrites = 3
 
 	bytes := in.Encode()
-	v := (&Univalue{}).Decode(bytes).(*Univalue)
+	v := (&StateCell{}).Decode(bytes).(*StateCell)
 	out := v.Value()
 
 	raw := in.Value().(*commutative.U256).Value().(uint256.Int)
@@ -118,7 +118,7 @@ func TestUnivalueCodeMeta(t *testing.T) {
 	meta.(*commutative.Path).SetAdded([]string{"+01", "+001", "+002", "+002"})
 	meta.(*commutative.Path).InsertRemoved([]string{"-091", "-0092", "-092", "-092", "-097"})
 
-	in := NewUnivalue(1, "blcc://eth1.0/account/"+alice+"/storage/ctrn-0/elem-000", 3, 4, 11, meta, nil)
+	in := NewStateCell(1, "blcc://eth1.0/account/"+alice+"/storage/ctrn-0/elem-000", 3, 4, 11, meta, nil)
 	in.reads = 1
 	in.writes = 2
 	in.deltaWrites = 3
@@ -126,7 +126,7 @@ func TestUnivalueCodeMeta(t *testing.T) {
 	inKeys, _, _ := in.Value().(stgcommon.Type).Get()
 
 	bytes := in.Encode()
-	out := (&Univalue{}).Decode(bytes).(*Univalue)
+	out := (&StateCell{}).Decode(bytes).(*StateCell)
 	outKeys, _, _ := out.Value().(stgcommon.Type).Get()
 
 	if !slice.EqualSet(inKeys.(*softdeltaset.DeltaSet[string]).Elements(), outKeys.(*softdeltaset.DeltaSet[string]).Elements()) {

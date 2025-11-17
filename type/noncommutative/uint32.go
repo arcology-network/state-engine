@@ -24,9 +24,9 @@ import (
 	intf "github.com/arcology-network/storage-committer/common"
 )
 
-type Uint32 uint64
+type Uint32 uint32
 
-func NewUint32(v uint64) *Uint32 {
+func NewUint32(v uint32) *Uint32 {
 	var this Uint32 = Uint32(v)
 	return &this
 }
@@ -44,14 +44,14 @@ func (this *Uint32) IsCommutative() bool { return false }
 func (this *Uint32) HasLimits() bool     { return false }
 
 func (this *Uint32) Value() any         { return this }
-func (this *Uint32) Delta() (any, bool) { return this, *this >= 0 }
+func (this *Uint32) Delta() (any, bool) { return this, true }
 func (this *Uint32) DeltaSign() bool    { return true } // delta sign
 func (this *Uint32) Limits() (any, any) {
 	min, max := 0, uint64(math.MaxUint32)
 	return &min, &max
 }
 
-func (this *Uint32) CloneDelta() (any, bool) { return this.Clone(), *this >= 0 }
+func (this *Uint32) CloneDelta() (any, bool) { return this.Clone(), true }
 func (this *Uint32) SetValue(v any)          { this.SetDelta(v, true) } // The sign is only a placeholder, the value carries the sign by itself.
 func (this *Uint32) Preload(_ string, _ any) {}
 

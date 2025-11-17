@@ -17,7 +17,7 @@
 
 package ccstorage
 
-import "github.com/arcology-network/storage-committer/type/univalue"
+import statecell "github.com/arcology-network/storage-committer/type/statecell"
 
 // LiveStorageWriter is a struct that contains data structure and methods for writing data to concurrent storage.
 // It manages buffered writes and supports both synchronous and asynchronous commit operations to the underlying storage.
@@ -26,10 +26,10 @@ type LiveStorageWriter struct {
 	buffer  []*LiveStgIndexer
 	store   *LiveStorage
 	version int64
-	filter  func(*univalue.Univalue) bool
+	filter  func(*statecell.StateCell) bool
 }
 
-func NewLiveStorageWriter(store *LiveStorage, version int64, filter func(*univalue.Univalue) bool) *LiveStorageWriter {
+func NewLiveStorageWriter(store *LiveStorage, version int64, filter func(*statecell.StateCell) bool) *LiveStorageWriter {
 	return &LiveStorageWriter{
 		LiveStgIndexer: NewLiveStgIndexer(store, 0, filter),
 		buffer:         []*LiveStgIndexer{},

@@ -22,13 +22,13 @@ package cache
 // isCommitted efficiently later.
 type ExecutionCacheWriter struct {
 	*ExecutionCacheIndexer
-	*WriteCache
+	*StateCache
 }
 
-func NewExecutionCacheWriter(writeCache *WriteCache, version int64) *ExecutionCacheWriter {
+func NewExecutionCacheWriter(writeCache *StateCache, version int64) *ExecutionCacheWriter {
 	return &ExecutionCacheWriter{
 		ExecutionCacheIndexer: NewExecutionCacheIndexer(nil, int64(version), nil),
-		WriteCache:            writeCache,
+		StateCache:            writeCache,
 	}
 }
 
@@ -36,7 +36,7 @@ func NewExecutionCacheWriter(writeCache *WriteCache, version int64) *ExecutionCa
 func (this *ExecutionCacheWriter) Precommit(isSync bool) {
 	this.ExecutionCacheIndexer.Finalize() // Remove the nil transitions
 	for i := range this.ExecutionCacheIndexer.buffer {
-		this.WriteCache.kvDict[*this.ExecutionCacheIndexer.buffer[i].GetPath()] = this.ExecutionCacheIndexer.buffer[i]
+		this.StateCache.kvDict[*this.ExecutionCacheIndexer.buffer[i].GetPath()] = this.ExecutionCacheIndexer.buffer[i]
 	}
 	this.ExecutionCacheIndexer = NewExecutionCacheIndexer(nil, -1, nil)
 
@@ -45,7 +45,7 @@ func (this *ExecutionCacheWriter) Precommit(isSync bool) {
 // The generation cache is transient and will clear itself when all the transitions are isCommitted to
 // the database.
 func (this *ExecutionCacheWriter) Commit(_ uint64) {
-	this.WriteCache.Clear()
+	this.StateCache.Clear()
 	this.ExecutionCacheIndexer.buffer = this.ExecutionCacheIndexer.buffer[:0]
 }
 

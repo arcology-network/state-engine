@@ -15,7 +15,7 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package univalue
+package statecell
 
 import (
 	"fmt"
@@ -26,7 +26,7 @@ import (
 	"github.com/arcology-network/common-lib/exp/slice"
 )
 
-func (this Univalues) Size() uint64 {
+func (this StateCells) Size() uint64 {
 	size := (len(this) + 1) * codec.UINT64_LEN
 	for _, v := range this {
 		size += int(v.Size())
@@ -34,7 +34,7 @@ func (this Univalues) Size() uint64 {
 	return uint64(size)
 }
 
-func (this Univalues) Sizes() []int {
+func (this StateCells) Sizes() []int {
 	sizes := make([]int, len(this))
 	for i, v := range this {
 		sizes[i] = common.IfThenDo1st(v != nil, func() int { return int(v.Size()) }, 0)
@@ -42,13 +42,13 @@ func (this Univalues) Sizes() []int {
 	return sizes
 }
 
-func (this Univalues) Encode(selector ...any) []byte {
+func (this StateCells) Encode(selector ...any) []byte {
 	lengths := make([]uint64, len(this))
 	if len(lengths) == 0 {
 		return []byte{}
 	}
 
-	slice.ParallelForeach(this, 6, func(i int, _ **Univalue) {
+	slice.ParallelForeach(this, 6, func(i int, _ **StateCell) {
 		if this[i] != nil {
 			lengths[i] = this[i].Size()
 		}
@@ -63,67 +63,67 @@ func (this Univalues) Encode(selector ...any) []byte {
 	buffer := make([]byte, headerLen+offsets[len(offsets)-1])
 	codec.Uint32(len(this)).EncodeTo(buffer)
 
-	slice.ParallelForeach(this, 6, func(i int, _ **Univalue) {
+	slice.ParallelForeach(this, 6, func(i int, _ **StateCell) {
 		codec.Uint32(offsets[i]).EncodeTo(buffer[(i+1)*codec.UINT64_LEN:])
 		this[i].EncodeTo(buffer[headerLen+offsets[i]:])
 	})
 	return buffer
 }
 
-func (Univalues) Decode(bytes []byte) any {
+func (StateCells) Decode(bytes []byte) any {
 	if len(bytes) == 0 {
-		return Univalues{}
+		return StateCells{}
 	}
 
 	buffers := [][]byte(codec.Byteset{}.Decode(bytes).(codec.Byteset))
-	univalues := make([]*Univalue, len(buffers))
+	cells := make([]*StateCell, len(buffers))
 
 	slice.ParallelForeach(buffers, 6, func(i int, _ *[]byte) {
-		v := (&Univalue{}).Decode(buffers[i])
-		univalues[i] = v.(*Univalue)
+		v := (&StateCell{}).Decode(buffers[i])
+		cells[i] = v.(*StateCell)
 	})
-	return Univalues(univalues)
+	return StateCells(cells)
 }
 
-func (Univalues) DecodeWithMempool(bytes []byte, get func() *Univalue, put func(any)) any {
+func (StateCells) DecodeWithMempool(bytes []byte, get func() *StateCell, put func(any)) any {
 	if len(bytes) == 0 {
 		return nil
 	}
 
 	buffers := [][]byte(codec.Byteset{}.Decode(bytes).(codec.Byteset))
-	univalues := make([]*Univalue, len(buffers))
+	univalues := make([]*StateCell, len(buffers))
 
 	slice.ParallelForeach(buffers, 6, func(i int, _ *[]byte) {
 		v := get()
 		v.reclaimFunc = put
-		univalues[i] = v.Decode(buffers[i]).(*Univalue)
+		univalues[i] = v.Decode(buffers[i]).(*StateCell)
 	})
-	return Univalues(univalues)
+	return StateCells(univalues)
 }
 
-// func (Univalues) DecodeV2(bytesset [][]byte, get func() any, put func(any)) Univalues {
-// 	univalues := make([]*Univalue, len(bytesset))
+// func (StateCells) DecodeV2(bytesset [][]byte, get func() any, put func(any)) StateCells {
+// 	univalues := make([]*StateCells, len(bytesset))
 // 	for i := range bytesset {
-// 		v := get().(*Univalue)
+// 		v := get().(*StateCells)
 // 		v.reclaimFunc = put
 // 		v.Decode(bytesset[i])
 // 		univalues[i] = v
 // 	}
-// 	return Univalues(univalues)
+// 	return StateCells(univalues)
 // }
 
-func (this Univalues) GobEncode() ([]byte, error) {
+func (this StateCells) GobEncode() ([]byte, error) {
 	return this.Encode(), nil
 }
 
-func (this *Univalues) GobDecode(data []byte) error {
+func (this *StateCells) GobDecode(data []byte) error {
 	v := this.Decode(data)
-	*this = v.(Univalues)
+	*this = v.(StateCells)
 	return nil
 }
 
 // Print the univalues if the satisfied the existing condition
-func (this Univalues) Print(condition ...func(v *Univalue) bool) {
+func (this StateCells) Print(condition ...func(v *StateCell) bool) {
 	sorted := slice.Clone(this)
 	sort.Slice(sorted, func(i, j int) bool {
 		return (*sorted[i].GetPath()) < (*sorted[j].GetPath())
@@ -141,7 +141,7 @@ func (this Univalues) Print(condition ...func(v *Univalue) bool) {
 }
 
 // Print the univalues if the satisfied the existing condition
-func (this Univalues) PrintUnsorted() {
+func (this StateCells) PrintUnsorted() {
 	for i, v := range this {
 		fmt.Print(i, ": ")
 		v.Print()

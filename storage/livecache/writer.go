@@ -17,19 +17,19 @@
 
 package livecache
 
-import "github.com/arcology-network/storage-committer/type/univalue"
+import statecell "github.com/arcology-network/storage-committer/type/statecell"
 
 // LiveCacheWriter writes to the LiveCache.
 
 type LiveCacheWriter struct {
 	*LiveCacheIndexer
 	liveCache *LiveCache
-	buffer    []*LiveCacheIndexer           // For multiple generations. Each geneartion has its own indexer.
-	version   int64                         // The version of the indexer, used for debugging and tracking.
-	filter    func(*univalue.Univalue) bool // Filter function to select transitions to be indexed
+	buffer    []*LiveCacheIndexer             // For multiple generations. Each geneartion has its own indexer.
+	version   int64                           // The version of the indexer, used for debugging and tracking.
+	filter    func(*statecell.StateCell) bool // Filter function to select transitions to be indexed
 }
 
-func NewLiveCacheWriter(cache *LiveCache, version int64, filter func(*univalue.Univalue) bool) *LiveCacheWriter {
+func NewLiveCacheWriter(cache *LiveCache, version int64, filter func(*statecell.StateCell) bool) *LiveCacheWriter {
 	return &LiveCacheWriter{
 		LiveCacheIndexer: NewLiveCacheIndexer(cache, version, filter),
 		liveCache:        cache,
@@ -40,7 +40,7 @@ func NewLiveCacheWriter(cache *LiveCache, version int64, filter func(*univalue.U
 }
 
 // Import the transitions into the indexer
-func (this *LiveCacheWriter) Import(transitions []*univalue.Univalue) {
+func (this *LiveCacheWriter) Import(transitions []*statecell.StateCell) {
 	if !this.liveCache.Status() {
 		return // Cache is disabled, do nothing.
 	}

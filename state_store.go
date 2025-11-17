@@ -25,13 +25,13 @@ import (
 
 	cache "github.com/arcology-network/storage-committer/storage/cache"
 	proxy "github.com/arcology-network/storage-committer/storage/proxy"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 	"github.com/cespare/xxhash/v2"
 )
 
 // Buffer is simpliest  of indexers. It does not index anything, just stores the transitions.
 type StateStore struct {
-	*cache.WriteCache // execution cache, cleared at the end of each block.
+	*cache.StateCache // execution cache, cleared at the end of each block.
 	*committer.StateCommitter
 	backend *proxy.StorageProxy
 }
@@ -40,7 +40,7 @@ type StateStore struct {
 func NewStateStore(backend *proxy.StorageProxy) *StateStore {
 	store := &StateStore{
 		backend: backend,
-		WriteCache: cache.NewWriteCache(
+		StateCache: cache.NewStateCache(
 			backend,
 			16,
 			1,
@@ -49,11 +49,11 @@ func NewStateStore(backend *proxy.StorageProxy) *StateStore {
 			},
 		),
 	}
-	store.StateCommitter = committer.NewStateCommitter(store.WriteCache, store.GetWriters())
+	store.StateCommitter = committer.NewStateCommitter(store.StateCache, store.GetWriters())
 
 	// Commit initial transitions to the store if any.
-	initTrans := []*univalue.Univalue{
-		// univalue.NewUnivalue(stgcommon.SYSTEM, stgcommon.GAS_PREPAYERS, 0, 1, 0, commutative.NewPath(), nil),
+	initTrans := []*statecell.StateCell{
+		// statecell.NewStateCell(stgcommon.SYSTEM, stgcommon.GAS_PREPAYERS, 0, 1, 0, commutative.NewPath(), nil),
 	}
 
 	for _, tran := range initTrans {
@@ -67,14 +67,14 @@ func NewStateStore(backend *proxy.StorageProxy) *StateStore {
 	return store
 }
 
-func (this *StateStore) Backend() *proxy.StorageProxy    { return this.backend }
-func (this *StateStore) Cache() *cache.WriteCache        { return this.WriteCache }
-func (this *StateStore) Import(trans univalue.Univalues) { this.StateCommitter.Import(trans) }
-func (this *StateStore) Preload(key []byte) any          { return this.backend.Preload(key) }
-func (this *StateStore) Clear()                          { this.WriteCache.Clear() }
+func (this *StateStore) Backend() *proxy.StorageProxy        { return this.backend }
+func (this *StateStore) Cache() *cache.StateCache            { return this.StateCache }
+func (this *StateStore) Import(trans []*statecell.StateCell) { this.StateCommitter.Import(trans) }
+func (this *StateStore) Preload(key []byte) any              { return this.backend.Preload(key) }
+func (this *StateStore) Clear()                              { this.StateCache.Clear() }
 
-func (this *StateStore) GetWriters() []intf.Writer[*univalue.Univalue] {
-	return append([]intf.Writer[*univalue.Univalue]{
-		cache.NewExecutionCacheWriter(this.WriteCache, -1)},
+func (this *StateStore) GetWriters() []intf.Writer[*statecell.StateCell] {
+	return append([]intf.Writer[*statecell.StateCell]{
+		cache.NewExecutionCacheWriter(this.StateCache, -1)},
 		this.backend.GetWriters()...)
 }

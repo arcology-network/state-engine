@@ -29,16 +29,16 @@ package cache
 // 		return READ_NONEXIST
 // 	}
 
-// 	typedv := v.(*univalue.Univalue).Value()
+// 	typedv := v.(*statecell.StateCell).Value()
 // 	dataSize := common.IfThenDo1st(typedv != nil, func() uint64 { return uint64(typedv.(stgcommon.Type).MemSize()) }, 0)
 // 	return common.IfThen(
-// 		v.(*univalue.Univalue).Reads() > 1, // Is hot loaded
+// 		v.(*statecell.StateCell).Reads() > 1, // Is hot loaded
 // 		common.Max(dataSize/32, 1)*3,
 // 		(dataSize/32)*5000,
 // 	)
 // }
 
-// func (Fee) Writer(key string, v interface{}, writecache *WriteCache) int64 { // May get refunds sometimes
+// func (Fee) Writer(key string, v interface{}, writecache *StateCache) int64 { // May get refunds sometimes
 // 	committedSize := uint64(0)
 // 	committedv, _ := writecache.ReadOnlyStore().Retrive(key, v)
 

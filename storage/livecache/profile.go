@@ -24,9 +24,10 @@ import (
 
 	"github.com/arcology-network/common-lib/common"
 	"github.com/arcology-network/common-lib/exp/associative"
+	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
 	stgcommon "github.com/arcology-network/storage-committer/common"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 )
 
 type Profile struct {
@@ -70,9 +71,9 @@ func (this *CacheProfile) MinVisits() uint64 { return this.occupied }
 // Check if the cache has enough space to store the new values.
 // If not, the cache will be cleared. If still not enough space,
 // some new values won't be stored.
-func (this *CacheProfile) PrepareSpace(univals *[]*univalue.Univalue, liveCache *LiveCache) {
+func (this *CacheProfile) PrepareSpace(univals *[]*statecell.StateCell, liveCache *LiveCache) {
 	// The total memory required to store the new values.
-	totalRequired := slice.Accumulate[*univalue.Univalue, uint64](*univals, 0, func(_ int, v *univalue.Univalue) uint64 {
+	totalRequired := slice.Accumulate[*statecell.StateCell, uint64](*univals, 0, func(_ int, v *statecell.StateCell) uint64 {
 		if v.Value() == nil {
 			return 0
 		}
@@ -145,7 +146,7 @@ func (this *CacheProfile) freeCache(sizeToFree uint64) uint64 {
 			return
 		}
 
-		ks, v := common.MapKVs(shards[i])
+		ks, v := mapi.KVs(shards[i])
 		scores := slice.ParallelTransform(v, runtime.NumCPU(), func(i int, v *associative.Pair[stgcommon.Type, *Profile]) float32 {
 			return float32(v.Second.visits) / float32(sizeToFree-uint64(v.Second.firstLoaded)) // The score of the value.
 		})

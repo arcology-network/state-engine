@@ -15,7 +15,7 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package univalue
+package statecell
 
 import (
 	"crypto/sha256"
@@ -33,18 +33,18 @@ import (
 )
 
 // THe univalue is a combination of a value and a property field that contains the access information about the value.
-type Univalue struct {
+type StateCell struct {
 	Property
 	value any
 	buf   []byte // The encoded value.
 }
 
-func NewUnivalue(tx uint64, key string, reads, writes uint32, deltaWrites uint32, T any, source any) *Univalue {
+func NewStateCell(tx uint64, key string, reads, writes uint32, deltaWrites uint32, T any, source any) *StateCell {
 	if source != nil {
 		panic("Error: The source should be nil")
 	}
 
-	univ := &Univalue{
+	univ := &StateCell{
 		Property{
 			vType:         common.IfThenDo1st(T != nil, func() uint8 { return T.(intf.Type).TypeID() }, uint8(reflect.Invalid)),
 			tx:            tx,
@@ -62,7 +62,7 @@ func NewUnivalue(tx uint64, key string, reads, writes uint32, deltaWrites uint32
 	return univ
 }
 
-func (this *Univalue) Init(tx uint64, key string, reads, writes, deltaWrites uint32, v any, preExist bool) *Univalue {
+func (this *StateCell) Init(tx uint64, key string, reads, writes, deltaWrites uint32, v any, preExist bool) *StateCell {
 	// Sometime when a value is read from the storage by a delete operation, the caller only provides the nil value as
 	// the new value, the loader wouldn't be about to decode it to the correct type. The loader will return the raw byte value
 	// in this case, so we convert it to a noncommutative bytes type to avoid the type mismatch happening down stream.
@@ -82,27 +82,27 @@ func (this *Univalue) Init(tx uint64, key string, reads, writes, deltaWrites uin
 	return this
 }
 
-func (*Univalue) New(meta, value, cache any) *Univalue {
-	return &Univalue{
+func (*StateCell) New(meta, value, cache any) *StateCell {
+	return &StateCell{
 		*meta.(*Property),
 		value,
 		cache.([]byte),
 	}
 }
 
-func (*Univalue) Reset(this *Univalue) {
+func (*StateCell) Reset(this *StateCell) {
 	this.Property.Reset()
 	this.ClearCache()
 	this.value = nil
 }
 
-func (this *Univalue) From(v *Univalue) any { return v }
+func (this *StateCell) From(v *StateCell) any { return v }
 
-// func (this *Univalue) IsHotLoaded() bool             { return this.reads > 1 }
-func (this *Univalue) SetTx(txId uint64) { this.tx = txId }
-func (this *Univalue) ClearCache()       { this.buf = this.buf[:0] }
-func (this *Univalue) Value() any        { return this.value }
-func (this *Univalue) SetValue(newValue any) *Univalue {
+// func (this *StateCell) IsHotLoaded() bool             { return this.reads > 1 }
+func (this *StateCell) SetTx(txId uint64) { this.tx = txId }
+func (this *StateCell) ClearCache()       { this.buf = this.buf[:0] }
+func (this *StateCell) Value() any        { return this.value }
+func (this *StateCell) SetValue(newValue any) *StateCell {
 	if this.value != nil && reflect.TypeOf(this.value) != reflect.TypeOf(newValue) && newValue != nil {
 		panic("Wrong type")
 	}
@@ -111,7 +111,7 @@ func (this *Univalue) SetValue(newValue any) *Univalue {
 	return this
 }
 
-func (this *Univalue) Reclaim() {
+func (this *StateCell) Reclaim() {
 	if this.reclaimFunc != nil {
 		this.reclaimFunc(this)
 	}
@@ -120,7 +120,7 @@ func (this *Univalue) Reclaim() {
 // This performs the action on the value and returns the result.
 // This function doesnn't make a deep copy of the original value.
 // It should be used for read-only operations ONLY!!!.
-func (this *Univalue) Do(tx uint64, path string, doer any) any {
+func (this *StateCell) Do(tx uint64, path string, doer any) any {
 	r, w, dw, ret := doer.(func(any) (uint32, uint32, uint32, any))(this)
 	this.reads += r
 	this.writes += w
@@ -128,7 +128,7 @@ func (this *Univalue) Do(tx uint64, path string, doer any) any {
 	return ret
 }
 
-func (this *Univalue) Get(tx uint64, path string, source any) any {
+func (this *StateCell) Get(tx uint64, path string, source any) any {
 	if this.value != nil {
 		tempV, r, w := this.value.(intf.Type).Get() //RW: Affiliated reads and writes
 		this.reads += r
@@ -150,11 +150,11 @@ func (this *Univalue) Get(tx uint64, path string, source any) any {
 	return this.value
 }
 
-func (this *Univalue) CopyTo(writable any) {
+func (this *StateCell) CopyTo(writable any) {
 	writeCache := writable.(interface {
 		Read(uint64, string, any) (any, any, uint64)
 		Write(uint64, string, any, ...any) (int64, error)
-		FindForRead(uint64, string, any, func(*Univalue)) (any, *Univalue, bool)
+		FindForRead(uint64, string, any, func(*StateCell)) (any, *StateCell, bool)
 	})
 
 	if this.writes == 0 && this.deltaWrites == 0 {
@@ -173,7 +173,7 @@ func (this *Univalue) CopyTo(writable any) {
 	univ.IncrementDeltaWrites(this.DeltaWrites())
 }
 
-func (this *Univalue) Set(tx uint64, path string, newV any, inCache bool, importer any) error { // update the value
+func (this *StateCell) Set(tx uint64, path string, newV any, inCache bool, importer any) error { // update the value
 	this.tx = tx
 
 	// Delete an non-existing value or deleting an entry that has been deleted already.
@@ -217,7 +217,7 @@ func (this *Univalue) Set(tx uint64, path string, newV any, inCache bool, import
 
 // Making a deep copy may be necessary to avoid interference with
 // the value in the global object cache.
-func (this *Univalue) MakeDeepCopy(newV any) {
+func (this *StateCell) MakeDeepCopy(newV any) {
 	// writes == 0 && deltaWrites == 0 means the value has been modified already.
 	// this.value == nil, this is a new value assignment, so we don't need to make a deep copy.
 	// typedV == nil, this is a delete operation, so we don't need to make a deep copy.
@@ -228,11 +228,10 @@ func (this *Univalue) MakeDeepCopy(newV any) {
 }
 
 // Check & Merge attributes
-func (this *Univalue) ApplyDelta(vec []*Univalue) error {
-	// vec := v.([]*Univalue)
+func (this *StateCell) ApplyDelta(vec []*StateCell) error {
 
 	/* Precheck & Merge attributes*/
-	for i := 0; i < len(vec); i++ {
+	for i := range vec {
 		this.PrecheckAttributes(vec[i])
 		this.writes += vec[i].Writes()
 		this.reads += vec[i].Reads()
@@ -240,7 +239,7 @@ func (this *Univalue) ApplyDelta(vec []*Univalue) error {
 	}
 
 	// Apply transitions
-	typedVals := slice.Transform(vec, func(_ int, v *Univalue) intf.Type {
+	typedVals := slice.Transform(vec, func(_ int, v *StateCell) intf.Type {
 		if v.Value() != nil {
 			return v.Value().(intf.Type)
 		}
@@ -260,27 +259,27 @@ func (this *Univalue) ApplyDelta(vec []*Univalue) error {
 // This record will have zero reads, writes and deltaWrites because isn't a real access to the path itself.
 // It may be a read access to the sub key, but it has been already recorded in the sub key record. In addition, it doesn't
 // conflict with other path access like read/write/deltaWrite to the path.
-func (this *Univalue) PathLookupOnly() bool {
+func (this *StateCell) PathLookupOnly() bool {
 	return this.reads == 0 && this.deltaWrites == 0 && this.writes == 0
 }
 
 // If all the entries in the isCommitted set have been removed.
 // only work for Path type
-// func (this *Univalue) IsCommittedDeleted() (bool, string) {
+// func (this *StateCell) IsCommittedDeleted() (bool, string) {
 // 	if common.IsType[*commutative.Path](this.Value()) {
 // 		return this.Value().(*commutative.Path).DeltaSet.Removed().AllDeleted, *this.path
 // 	}
 
 //		return IsCommittedPath(*this.path)
 //	}
-func (this *Univalue) IsReadOnly() bool       { return (this.writes == 0 && this.deltaWrites == 0) }
-func (this *Univalue) IsWriteOnly() bool      { return (this.reads == 0 && this.deltaWrites == 0) }
-func (this *Univalue) IsDeltaWriteOnly() bool { return (this.reads == 0 && this.writes == 0) }
-func (this *Univalue) IsDeleteOnly() bool {
+func (this *StateCell) IsReadOnly() bool       { return (this.writes == 0 && this.deltaWrites == 0) }
+func (this *StateCell) IsWriteOnly() bool      { return (this.reads == 0 && this.deltaWrites == 0) }
+func (this *StateCell) IsDeltaWriteOnly() bool { return (this.reads == 0 && this.writes == 0) }
+func (this *StateCell) IsDeleteOnly() bool {
 	return this.isDeleted && this.reads == 0 && this.deltaWrites == 0 // Cannot just use value == nil, because it may be a new value.
 }
 
-func (this *Univalue) IsNilInitOnly() bool {
+func (this *StateCell) IsNilInitOnly() bool {
 	return this.reads == 0 &&
 		!this.isDeleted &&
 		this.Value() != nil &&
@@ -289,7 +288,7 @@ func (this *Univalue) IsNilInitOnly() bool {
 
 // Commutative write is no longer treated as a conflict with read.
 // Write without read happens when a new value is created.
-func (this *Univalue) IsCumulativeWriteOnly(other *Univalue) bool {
+func (this *StateCell) IsCumulativeWriteOnly(other *StateCell) bool {
 	if this.Value() == nil {
 		return false
 	}
@@ -304,7 +303,7 @@ func (this *Univalue) IsCumulativeWriteOnly(other *Univalue) bool {
 		this.Reads() == 0
 }
 
-func (this *Univalue) PrecheckAttributes(other *Univalue) {
+func (this *StateCell) PrecheckAttributes(other *StateCell) {
 	if other.reads == 0 && other.writes == 0 && other.deltaWrites == 0 {
 		panic("Error: Read/Write/Deltawrite all zero!!")
 	}
@@ -334,8 +333,8 @@ func (this *Univalue) PrecheckAttributes(other *Univalue) {
 	}
 }
 
-func (this *Univalue) Clone() any {
-	v := &Univalue{
+func (this *StateCell) Clone() any {
+	v := &StateCell{
 		this.Property.Clone(),
 		common.IfThenDo1st(this.value != nil, func() any { return this.value.(intf.Type).Clone() }, this.value),
 		slice.Clone(this.buf),
@@ -343,9 +342,9 @@ func (this *Univalue) Clone() any {
 	return v
 }
 
-func LessByTx(this, other *Univalue) bool { return this.tx < other.tx }
+func LessByTx(this, other *StateCell) bool { return this.tx < other.tx }
 
-func (this *Univalue) Less(other *Univalue) bool {
+func (this *StateCell) Less(other *StateCell) bool {
 	if (this.value == nil || other.value == nil) && (this.value != other.value) {
 		return this.value == nil
 	}
@@ -368,11 +367,11 @@ func (this *Univalue) Less(other *Univalue) bool {
 	return true
 }
 
-func (this *Univalue) Checksum() [32]byte {
+func (this *StateCell) Checksum() [32]byte {
 	return sha256.Sum256(this.Encode())
 }
 
-func (this *Univalue) Print() {
+func (this *StateCell) Print() {
 	spaces := " " //fmt.Sprintf("%"+strconv.Itoa(len(strings.Split(*this.path, "/"))*1)+"v", " ")
 	fmt.Print(spaces+"tx: ", this.tx)
 	fmt.Print(spaces+"sequence: ", this.sequence)
@@ -393,7 +392,7 @@ func (this *Univalue) Print() {
 	fmt.Println()
 }
 
-func (this *Univalue) Equal(other *Univalue) bool {
+func (this *StateCell) Equal(other *StateCell) bool {
 	if this.value == nil && other.Value() == nil {
 		return true
 	}
@@ -411,7 +410,7 @@ func (this *Univalue) Equal(other *Univalue) bool {
 		this.isCommitted == other.IsCommitted()
 }
 
-// func (this *Univalue) GetCascadeSub(prefix string, source any) []string {
+// func (this *StateCell) GetCascadeSub(prefix string, source any) []string {
 // 	elements := slice.Transform(this.DeltaSet.Elements(), func(_ int, k string) string { return prefix + k })
 
 // 	store := source.(interface {

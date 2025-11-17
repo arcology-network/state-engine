@@ -21,23 +21,23 @@ import (
 
 	"github.com/arcology-network/common-lib/exp/slice"
 	stgcommon "github.com/arcology-network/storage-committer/common"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 )
 
 // LiveCacheIndexer is simpliest  of indexers. It does not index anything, just stores the transitions.
 type LiveCacheIndexer struct {
 	Version      int64
-	buffer       []*univalue.Univalue
-	importBuffer []*univalue.Univalue
+	buffer       []*statecell.StateCell
+	importBuffer []*statecell.StateCell
 	keys         []string
 	values       []stgcommon.Type
-	filter       func(*univalue.Univalue) bool
+	filter       func(*statecell.StateCell) bool
 }
 
-func NewLiveCacheIndexer(store *LiveCache, Version int64, filter func(*univalue.Univalue) bool) *LiveCacheIndexer {
+func NewLiveCacheIndexer(store *LiveCache, Version int64, filter func(*statecell.StateCell) bool) *LiveCacheIndexer {
 	return &LiveCacheIndexer{
 		Version:      Version,
-		importBuffer: []*univalue.Univalue{},
+		importBuffer: []*statecell.StateCell{},
 		keys:         []string{},
 		filter:       filter,
 		values:       []stgcommon.Type{},
@@ -46,7 +46,7 @@ func NewLiveCacheIndexer(store *LiveCache, Version int64, filter func(*univalue.
 
 // An index by account address, transitions have the same Eth account address will be put together in a list
 // This is for ETH storage, concurrent container related sub-paths won't be put into this index.
-func (this *LiveCacheIndexer) Import(transitions []*univalue.Univalue) {
+func (this *LiveCacheIndexer) Import(transitions []*statecell.StateCell) {
 	for i := range transitions {
 		if this.filter(transitions[i]) {
 			this.importBuffer = append(this.importBuffer, transitions[i])
@@ -56,14 +56,14 @@ func (this *LiveCacheIndexer) Import(transitions []*univalue.Univalue) {
 
 func (this *LiveCacheIndexer) PreCommit() {
 	this.buffer = this.importBuffer
-	this.importBuffer = []*univalue.Univalue{}
+	this.importBuffer = []*statecell.StateCell{}
 }
 
 func (this *LiveCacheIndexer) Finalize() {
-	slice.RemoveIf((*[]*univalue.Univalue)(&this.buffer), func(i int, v *univalue.Univalue) bool { return v.GetPath() == nil })
+	slice.RemoveIf((*[]*statecell.StateCell)(&this.buffer), func(i int, v *statecell.StateCell) bool { return v.GetPath() == nil })
 
 	this.keys = make([]string, len(this.buffer))
-	this.values = slice.ParallelTransform(this.buffer, runtime.NumCPU(), func(i int, v *univalue.Univalue) stgcommon.Type {
+	this.values = slice.ParallelTransform(this.buffer, runtime.NumCPU(), func(i int, v *statecell.StateCell) stgcommon.Type {
 		this.keys[i] = *v.GetPath()
 		if v.Value() != nil {
 			return v.Value().(stgcommon.Type)
@@ -79,7 +79,7 @@ func (this *LiveCacheIndexer) Merge(idxers []*LiveCacheIndexer) *LiveCacheIndexe
 
 	this.buffer = slice.ConcateDo(idxers,
 		func(idxer *LiveCacheIndexer) uint64 { return uint64(len(idxer.buffer)) },
-		func(idxer *LiveCacheIndexer) []*univalue.Univalue { return idxer.buffer })
+		func(idxer *LiveCacheIndexer) []*statecell.StateCell { return idxer.buffer })
 
 	// this.keys = slice.ConcateDo(idxers,
 	// 	func(idxer *LiveCacheIndexer) uint64 { return uint64(len(idxer.keys)) },

@@ -17,55 +17,54 @@
 package cache
 
 import (
-	commonlibcommon "github.com/arcology-network/common-lib/common"
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	slice "github.com/arcology-network/common-lib/exp/slice"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 
 	// stgcommon "github.com/arcology-network/storage-committer/common"
 	stgcommon "github.com/arcology-network/storage-committer/common"
 )
 
-// WriteCacheFilter is a post processing filter for WriteCache.
+// StateCacheFilter is a post processing filter for StateCache.
 // It is used to filter out the transitions based on the addresses.
 // out the transitions based on the addresses.
-type WriteCacheFilter struct {
-	*WriteCache
+type StateCacheFilter struct {
+	*StateCache
 	ignoreAddresses map[string]bool
 }
 
-func NewWriteCacheFilter(writeCache interface{}) *WriteCacheFilter {
-	return &WriteCacheFilter{
-		writeCache.(*WriteCache),
+func NewStateCacheFilter(writeCache interface{}) *StateCacheFilter {
+	return &StateCacheFilter{
+		writeCache.(*StateCache),
 		map[string]bool{},
 	}
 }
 
-func (this *WriteCacheFilter) ToBuffer() []*univalue.Univalue {
-	return mapi.Values(*this.WriteCache.Cache())
+func (this *StateCacheFilter) ToBuffer() []*statecell.StateCell {
+	return mapi.Values(*this.StateCache.Cache())
 }
 
-func (this *WriteCacheFilter) RemoveByAddress(addr string) {
-	commonlibcommon.MapRemoveIf(this.kvDict,
-		func(path string, _ *univalue.Univalue) bool {
-			return path[stgcommon.ETH10_ACCOUNT_PREFIX_LENGTH:stgcommon.ETH10_ACCOUNT_PREFIX_LENGTH+stgcommon.ETH10_ACCOUNT_LENGTH] == addr
+func (this *StateCacheFilter) RemoveByAddress(addr string) {
+	mapi.RemoveIf(this.kvDict,
+		func(path string, _ *statecell.StateCell) bool {
+			return path[stgcommon.ETH_ACCOUNT_PREFIX_LENGTH:stgcommon.ETH_ACCOUNT_PREFIX_LENGTH+stgcommon.ETH_ACCOUNT_LENGTH] == addr
 		},
 	)
 }
 
-func (this *WriteCacheFilter) AddToAutoReversion(addr string) {
+func (this *StateCacheFilter) AddToAutoReversion(addr string) {
 	if _, ok := (this.ignoreAddresses)[addr]; !ok {
 		(this.ignoreAddresses)[addr] = true
 	}
 }
 
-func (this *WriteCacheFilter) filterByAddress(transitions *[]*univalue.Univalue) []*univalue.Univalue {
+func (this *StateCacheFilter) filterByAddress(transitions *[]*statecell.StateCell) []*statecell.StateCell {
 	if len(this.ignoreAddresses) == 0 {
 		return *transitions
 	}
 
-	out := slice.RemoveIf(transitions, func(_ int, v *univalue.Univalue) bool {
-		address := (*v.GetPath())[stgcommon.ETH10_ACCOUNT_PREFIX_LENGTH : stgcommon.ETH10_ACCOUNT_PREFIX_LENGTH+stgcommon.ETH10_ACCOUNT_LENGTH]
+	out := slice.RemoveIf(transitions, func(_ int, v *statecell.StateCell) bool {
+		address := (*v.GetPath())[stgcommon.ETH_ACCOUNT_PREFIX_LENGTH : stgcommon.ETH_ACCOUNT_PREFIX_LENGTH+stgcommon.ETH_ACCOUNT_LENGTH]
 		_, ok := this.ignoreAddresses[address]
 		return ok
 	})
@@ -73,7 +72,7 @@ func (this *WriteCacheFilter) filterByAddress(transitions *[]*univalue.Univalue)
 	return out
 }
 
-func (this *WriteCacheFilter) ByType() ([]*univalue.Univalue, []*univalue.Univalue) {
+func (this *StateCacheFilter) ByType() ([]*statecell.StateCell, []*statecell.StateCell) {
 	accesses, transitions := this.ExportAll()
 	return this.filterByAddress(&accesses), this.filterByAddress(&transitions)
 }

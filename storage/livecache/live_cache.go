@@ -24,7 +24,7 @@ import (
 	"github.com/arcology-network/common-lib/exp/slice"
 	cache "github.com/arcology-network/common-lib/storage/cache"
 	stgcommon "github.com/arcology-network/storage-committer/common"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 
 	// intf "github.com/arcology-network/storage-committer/interfaces"
 
@@ -94,7 +94,7 @@ func (this *LiveCache) GetRaw(key string) (*associative.Pair[stgcommon.Type, *Pr
 	return *v, ok
 }
 
-func (this *LiveCache) Commit(univals []*univalue.Univalue, block uint64) {
+func (this *LiveCache) Commit(univals []*statecell.StateCell, block uint64) {
 	// Cache is disabled, do nothing.
 	if !this.Status() {
 		return
@@ -104,11 +104,11 @@ func (this *LiveCache) Commit(univals []*univalue.Univalue, block uint64) {
 	this.profile.PrepareSpace(&univals, this)
 
 	// Extract the keys and values from the univalues.
-	keys := slice.ParallelTransform(univals, runtime.NumCPU(), func(i int, v *univalue.Univalue) string {
+	keys := slice.ParallelTransform(univals, runtime.NumCPU(), func(i int, v *statecell.StateCell) string {
 		return *v.GetPath()
 	})
 
-	pairedVals := slice.ParallelTransform(univals, runtime.NumCPU(), func(i int, v *univalue.Univalue) *associative.Pair[stgcommon.Type, *Profile] {
+	pairedVals := slice.ParallelTransform(univals, runtime.NumCPU(), func(i int, v *statecell.StateCell) *associative.Pair[stgcommon.Type, *Profile] {
 		if v.Value() == nil {
 			return nil
 		}

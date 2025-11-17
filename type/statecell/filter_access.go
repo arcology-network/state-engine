@@ -15,7 +15,7 @@
  *   limitations under the License.
  */
 
-package univalue
+package statecell
 
 import (
 	"github.com/arcology-network/common-lib/common"
@@ -25,11 +25,11 @@ import (
 // IPAccess is purely for inter-process communication, the valuee get copied in
 // the process of serialization anyway.
 type IPAccess struct {
-	*Univalue
+	*StateCell
 	Err error
 }
 
-func (this IPAccess) From(v *Univalue) *Univalue {
+func (this IPAccess) From(v *StateCell) *StateCell {
 	if this.Err != nil || v.IfSkipConflictCheck() || v.PathLookupOnly() {
 		return nil
 	}
@@ -56,9 +56,9 @@ func (this IPAccess) From(v *Univalue) *Univalue {
 
 type ITAccess struct{ IPAccess }
 
-func (this ITAccess) From(v *Univalue) *Univalue {
+func (this ITAccess) From(v *StateCell) *StateCell {
 	value := this.IPAccess.From(v)
-	// converted := common.IfThenDo1st(value != nil, func() *Univalue { return value.(*Univalue) }, nil)
+	// converted := common.IfThenDo1st(value != nil, func() *StateCell { return value.(*StateCell) }, nil)
 	if value == nil {
 		return nil
 	}

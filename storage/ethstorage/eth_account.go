@@ -30,9 +30,9 @@ import (
 	stgcommon "github.com/arcology-network/storage-committer/common"
 	commutative "github.com/arcology-network/storage-committer/type/commutative"
 	noncommutative "github.com/arcology-network/storage-committer/type/noncommutative"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 
-	platform "github.com/arcology-network/storage-committer/platform"
+	platform "github.com/arcology-network/storage-committer/type/common"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -235,7 +235,7 @@ func (this *Account) Retrive(key string, T any) (interface{}, error) {
 }
 
 func (this *Account) UpdateAccountTrie(keys []string, typedVals []stgcommon.Type) error {
-	if pos, _ := slice.FindFirstIf(keys, func(_ int, k string) bool { return len(k) == stgcommon.ETH10_ACCOUNT_FULL_LENGTH+1 }); pos >= 0 {
+	if pos, _ := slice.FindFirstIf(keys, func(_ int, k string) bool { return len(k) == stgcommon.ETH_ACCOUNT_FULL_LENGTH+1 }); pos >= 0 {
 		slice.RemoveAt(&keys, pos)
 		slice.RemoveAt(&typedVals, pos)
 	}
@@ -292,9 +292,9 @@ func (this *Account) UpdateAccountTrie(keys []string, typedVals []stgcommon.Type
 }
 
 // Write the account changes to theirs Eth Trie
-func (this *Account) ApplyChanges(transitions [][]*univalue.Univalue, getter func([]*univalue.Univalue) (string, stgcommon.Type)) ([]string, []stgcommon.Type, error) {
+func (this *Account) ApplyChanges(transitions [][]*statecell.StateCell, getter func([]*statecell.StateCell) (string, stgcommon.Type)) ([]string, []stgcommon.Type, error) {
 	keys := make([]string, len(transitions))
-	typedVals := slice.Transform(transitions, func(i int, vals []*univalue.Univalue) stgcommon.Type {
+	typedVals := slice.Transform(transitions, func(i int, vals []*statecell.StateCell) stgcommon.Type {
 		_, v := getter(vals)
 		keys[i] = *vals[i].GetPath()
 		return v

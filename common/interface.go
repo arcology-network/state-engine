@@ -15,7 +15,7 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package storagecommon
+package common
 
 type Type interface { // value type
 	TypeID() uint8

@@ -22,9 +22,9 @@ import (
 	"github.com/arcology-network/common-lib/common"
 	indexer "github.com/arcology-network/common-lib/storage/indexer"
 	stgcommon "github.com/arcology-network/storage-committer/common"
-	platform "github.com/arcology-network/storage-committer/platform"
 	cache "github.com/arcology-network/storage-committer/storage/cache"
-	"github.com/arcology-network/storage-committer/type/univalue"
+	platform "github.com/arcology-network/storage-committer/type/common"
+	statecell "github.com/arcology-network/storage-committer/type/statecell"
 
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
@@ -45,13 +45,13 @@ type StateCommitter struct {
 	readonlyStore stgcommon.ReadOnlyStore
 	platform      *platform.Platform
 
-	writers []stgcommon.Writer[*univalue.Univalue] // db writers
+	writers []stgcommon.Writer[*statecell.StateCell] // db writers
 
-	syncWriters  []stgcommon.Writer[*univalue.Univalue] // db writers that need to be synchronized
-	asyncWriters []stgcommon.Writer[*univalue.Univalue] // db writer that is used for asynchronous commit
+	syncWriters  []stgcommon.Writer[*statecell.StateCell] // db writers that need to be synchronized
+	asyncWriters []stgcommon.Writer[*statecell.StateCell] // db writer that is used for asynchronous commit
 
-	byPath *indexer.UnorderedIndexer[string, *univalue.Univalue, []*univalue.Univalue]
-	byTxID *indexer.UnorderedIndexer[uint64, *univalue.Univalue, []*univalue.Univalue]
+	byPath *indexer.UnorderedIndexer[string, *statecell.StateCell, []*statecell.StateCell]
+	byTxID *indexer.UnorderedIndexer[uint64, *statecell.StateCell, []*statecell.StateCell]
 
 	Err error
 }
@@ -60,7 +60,7 @@ type StateCommitter struct {
 // A Committable store is a pair of an index and a store. The index is used to index the input transitions as they are
 // received, and the store is used to commit the indexed transitions. Since multiple store can share the same index, each
 // CommittableStore is an indexer and a list of Committable stores.
-func NewStateCommitter(readonlyStore stgcommon.ReadOnlyStore, writers []stgcommon.Writer[*univalue.Univalue]) *StateCommitter {
+func NewStateCommitter(readonlyStore stgcommon.ReadOnlyStore, writers []stgcommon.Writer[*statecell.StateCell]) *StateCommitter {
 	committer := &StateCommitter{
 		readonlyStore: readonlyStore,
 		platform:      platform.NewPlatform(),
@@ -71,7 +71,7 @@ func NewStateCommitter(readonlyStore stgcommon.ReadOnlyStore, writers []stgcommo
 	}
 
 	// Filter the writers into synchronous first.
-	committer.syncWriters = slice.MoveIf(&writers, func(_ int, v stgcommon.Writer[*univalue.Univalue]) bool {
+	committer.syncWriters = slice.MoveIf(&writers, func(_ int, v stgcommon.Writer[*statecell.StateCell]) bool {
 		return v.IsSync()
 	})
 
@@ -94,7 +94,7 @@ func (this *StateCommitter) SetStore(store stgcommon.ReadOnlyStore) { // Testing
 }
 
 // Import imports the given transitions into the StateCommitter.
-func (this *StateCommitter) Import(transitions []*univalue.Univalue) *StateCommitter {
+func (this *StateCommitter) Import(transitions []*statecell.StateCell) *StateCommitter {
 	// transitions := rawTrans //this.ExpandWildcards(rawTrans) // Import the wildcards, if any.
 
 	// Import the regular transitions to the indexers.
@@ -114,7 +114,7 @@ func (this *StateCommitter) whitelist(txs []uint64) *StateCommitter {
 	}
 
 	whitelistDict := mapi.FromSlice(txs, func(_ uint64) bool { return true })
-	this.byTxID.ParallelForeachDo(func(txid uint64, vec *[]*univalue.Univalue) {
+	this.byTxID.ParallelForeachDo(func(txid uint64, vec *[]*statecell.StateCell) {
 		if _, ok := whitelistDict[uint64(txid)]; !ok {
 			for _, v := range *vec {
 				v.SetPath(nil) // Mark the transition status, so that it can be removed later.
@@ -130,8 +130,8 @@ func (this *StateCommitter) Finalize(txs []uint64) {
 
 	// Finalize all the transitions by merging the transitions
 	// for both the ETH storage and the concurrent container transitions
-	this.byPath.ParallelForeachDo(func(_ string, v *[]*univalue.Univalue) {
-		slice.RemoveIf(v, func(_ int, val *univalue.Univalue) bool { return val.GetPath() == nil }) // Remove conflicting ones.
+	this.byPath.ParallelForeachDo(func(_ string, v *[]*statecell.StateCell) {
+		slice.RemoveIf(v, func(_ int, val *statecell.StateCell) bool { return val.GetPath() == nil }) // Remove conflicting ones.
 		if len(*v) > 0 {
 			// Finalize the transitions and flag the merged ones.
 			DeltaSequence(*v).Finalize(this.readonlyStore) // Sort and finalize the transitions.
@@ -148,12 +148,12 @@ func (this *StateCommitter) Finalize(txs []uint64) {
 func (this *StateCommitter) CascadeDelete(txs []uint64) {
 	// When deleting a path, all the sub paths are also deleted. But deleted sub paths aren't part of the transitions.
 	// to save bandwidth, we need generate these transitions here.
-	// GetCascadeSub := []*univalue.Univalue{}
-	// this.byPath.ForeachDo(func(_ string, v []*univalue.Univalue) {
+	// GetCascadeSub := []*statecell.StateCell{}
+	// this.byPath.ForeachDo(func(_ string, v []*statecell.StateCell) {
 	// 	if v[0].TypeID() == commutative.PATH && v[0].Value() == nil {
 	// 		for _, k := range v[0].Value().(*softdeltaset.DeltaSet[string]).Elements() {
 	// 			key := *(v[0].Property.GetPath()) + k // Concatenate the path and the subkey
-	// 			v := univalue.NewUnivalue(v[0].GetTx(), key, 0, 1, 0, nil, nil)
+	// 			v := statecell.NewStateCell(v[0].GetTx(), key, 0, 1, 0, nil, nil)
 	// 			GetCascadeSub = append(GetCascadeSub, v)
 	// 		}
 	// 	}
@@ -173,7 +173,7 @@ func (this *StateCommitter) Precommit(txs []uint64) *StateCommitter {
 // Only the global write cache needs to be synchronized before the next precommit or commit.
 func (this *StateCommitter) SyncPrecommit() {
 	slice.ParallelForeach(this.writers, len(this.writers),
-		func(i int, writer *stgcommon.Writer[*univalue.Univalue]) {
+		func(i int, writer *stgcommon.Writer[*statecell.StateCell]) {
 			// Eth storage only serves user API enquiries. It has nothing to do with the
 			// transitions execution. So we do not need to precommit it synchronously.
 			if !common.IsType[*ethstorage.EthStorageWriter](*writer) {
@@ -185,7 +185,7 @@ func (this *StateCommitter) SyncPrecommit() {
 // Only the global write cache needs to be synchronized before the next precommit or commit.
 func (this *StateCommitter) AsyncPrecommit() {
 	slice.ParallelForeach(this.writers, len(this.writers),
-		func(_ int, writer *stgcommon.Writer[*univalue.Univalue]) {
+		func(_ int, writer *stgcommon.Writer[*statecell.StateCell]) {
 			if !common.IsType[*cache.ExecutionCacheWriter](*writer) {
 				(*writer).Precommit(false)
 			}
@@ -204,7 +204,7 @@ func (this *StateCommitter) Commit(blockNum uint64) *StateCommitter {
 // Only the global write cache needs to be synchronized before the next precommit.
 func (this *StateCommitter) SyncCommit(blockNum uint64) {
 	slice.ParallelForeach(this.syncWriters, len(this.syncWriters),
-		func(_ int, writer *stgcommon.Writer[*univalue.Univalue]) {
+		func(_ int, writer *stgcommon.Writer[*statecell.StateCell]) {
 			(*writer).Commit(blockNum)
 		})
 }
@@ -212,7 +212,7 @@ func (this *StateCommitter) SyncCommit(blockNum uint64) {
 // Only the global write cache needs to be synchronized before the next precommit.
 func (this *StateCommitter) AsyncCommit(blockNum uint64) {
 	slice.ParallelForeach(this.asyncWriters, len(this.asyncWriters),
-		func(_ int, writer *stgcommon.Writer[*univalue.Univalue]) {
+		func(_ int, writer *stgcommon.Writer[*statecell.StateCell]) {
 			(*writer).Commit(blockNum)
 		})
 }

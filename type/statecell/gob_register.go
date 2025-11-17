@@ -15,13 +15,13 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package univalue
+package statecell
 
 import (
 	"encoding/gob"
 )
 
 func init() {
-	gob.Register(&Univalue{})
-	// gob.Register(Univalues{})
+	gob.Register(&StateCell{})
+	// gob.Register(StateCells{})
 }

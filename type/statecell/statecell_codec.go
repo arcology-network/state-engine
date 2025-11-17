@@ -15,27 +15,27 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package univalue
+package statecell
 
 import (
 	codec "github.com/arcology-network/common-lib/codec"
 	"github.com/arcology-network/common-lib/common"
 
 	stgcommon "github.com/arcology-network/storage-committer/common"
-	stgcodec "github.com/arcology-network/storage-committer/platform"
+	stgcodec "github.com/arcology-network/storage-committer/type/common"
 )
 
-func (this *Univalue) Encode() []byte {
+func (this *StateCell) Encode() []byte {
 	buffer := make([]byte, this.Size())
 	this.EncodeTo(buffer)
 	return buffer
 }
 
-func (this *Univalue) HeaderSize() uint64 {
+func (this *StateCell) HeaderSize() uint64 {
 	return uint64(3 * codec.UINT64_LEN)
 }
 
-func (this *Univalue) Sizes() []uint64 {
+func (this *StateCell) Sizes() []uint64 {
 	return []uint64{
 		this.HeaderSize(),
 		this.Property.Size(),
@@ -43,13 +43,13 @@ func (this *Univalue) Sizes() []uint64 {
 	}
 }
 
-func (this *Univalue) Size() uint64 {
+func (this *StateCell) Size() uint64 {
 	return this.HeaderSize() +
 		this.Property.Size() +
 		common.IfThenDo1st(this.value != nil, func() uint64 { return this.value.(stgcommon.Type).Size() }, 0)
 }
 
-func (this *Univalue) FillHeader(buffer []byte) int {
+func (this *StateCell) FillHeader(buffer []byte) int {
 	return codec.Encoder{}.FillHeader(
 		buffer,
 		[]uint64{
@@ -59,7 +59,7 @@ func (this *Univalue) FillHeader(buffer []byte) int {
 	)
 }
 
-func (this *Univalue) EncodeTo(buffer []byte) int {
+func (this *StateCell) EncodeTo(buffer []byte) int {
 	offset := this.FillHeader(buffer)
 
 	offset += this.Property.EncodeTo(buffer[offset:])
@@ -70,18 +70,18 @@ func (this *Univalue) EncodeTo(buffer []byte) int {
 	return offset
 }
 
-func (this *Univalue) Decode(buffer []byte) any {
+func (this *StateCell) Decode(buffer []byte) any {
 	fields := codec.Byteset{}.Decode(buffer).(codec.Byteset)
 	property := (&Property{}).Decode(fields[0]).(*Property)
 
-	return &Univalue{
+	return &StateCell{
 		*property,
 		(&stgcodec.Codec{ID: property.vType}).Decode(*property.path, fields[1], this.value),
 		fields[1], // Keep copy, should expire as soon as the value is updated
 	}
 }
 
-func (this *Univalue) GetEncoded() []byte {
+func (this *StateCell) GetEncoded() []byte {
 	if this.value == nil {
 		return []byte{}
 	}
@@ -96,11 +96,11 @@ func (this *Univalue) GetEncoded() []byte {
 	return this.buf
 }
 
-func (this *Univalue) GobEncode() ([]byte, error) {
+func (this *StateCell) GobEncode() ([]byte, error) {
 	return this.Encode(), nil
 }
 
-func (this *Univalue) GobDecode(buffer []byte) error {
-	*this = *(&Univalue{}).Decode(buffer).(*Univalue)
+func (this *StateCell) GobDecode(buffer []byte) error {
+	*this = *(&StateCell{}).Decode(buffer).(*StateCell)
 	return nil
 }

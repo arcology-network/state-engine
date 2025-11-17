@@ -108,7 +108,6 @@ func (this *Uint64) Set(v any, source any) (any, uint32, uint32, uint32, error) 
 }
 
 func (this *Uint64) ApplyDelta(typedVals []stgcommon.Type) (stgcommon.Type, int, error) {
-
 	for i, v := range typedVals {
 
 		if this == nil && v != nil { // New value
