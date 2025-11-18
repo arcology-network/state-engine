@@ -27,22 +27,38 @@ import (
 	"github.com/holiman/uint256"
 )
 
+// TransactionNormalizer generates the mandatory system transitions for a
+// transaction—gas debit/credit and nonce increment—and marks them as
+// conflict-immune so they always commit regardless of execution outcome.
+//
+// It extracts the sender/coinbase balance updates associated with gas payment
+// and move 3 transitions to the immune list, which are immune to execution failures:
+//
+//  1. A debit transition on the sender's balance to pay the gas fee.
+//  2. A credit transition on the coinbase's balance for the same amount from the sender.
+//  3. Nonce increment transition for the sender.
+//
+// These will be committed regardless of whether the transaction execution succeeds or fails.
+
 type TransactionNormalizer struct {
 	gasUsed  uint64
-	gasPrice uint64
 	Coinbase [20]byte
 	msg      *libcommon.StandardMessage
 }
 
-func NewTransactionNormalizer(gasUsed uint64, gasPrice uint64, coinbase [20]byte, msg *libcommon.StandardMessage) *TransactionNormalizer {
+func NewTransactionNormalizer(gasUsed uint64, coinbase [20]byte, msg *libcommon.StandardMessage) *TransactionNormalizer {
 	return &TransactionNormalizer{
 		gasUsed:  gasUsed,
-		gasPrice: gasPrice,
 		Coinbase: coinbase,
 		msg:      msg,
 	}
 }
 
+// insertGasTransition isolates the gas component of a balance update. If the
+// existing transition’s delta already equals the gas fee, it is marked as
+// conflict-immune and reused. Otherwise, a new transition is cloned with its
+// delta set to the exact gas amount. The returned transition always has
+// SkipConflictCheck enabled so it commits unconditionally.
 func (this *TransactionNormalizer) insertGasTransition(balanceTransition *StateCell, gasDelta *uint256.Int, isCredit bool) *StateCell {
 	v, _ := balanceTransition.Value().(stgcommon.Type).Delta()
 	totalDelta := v.(uint256.Int)
@@ -72,19 +88,6 @@ func (this *TransactionNormalizer) Normalize(rawStateAccesses []*StateCell) []*S
 	return append(ImmunedGas, ImmunedNonce...)
 }
 
-// NormalizeGas extracts the sender/coinbase balance updates associated with gas payment
-// and produces two canonical system transitions:
-//
-//  1. A debit transition on the sender's balance for gasUsed * gasPrice.
-//  2. A credit transition on the coinbase's balance for the same amount.
-//
-// These transitions do NOT exist in the raw state accesses; they are reconstructed from the
-// transaction metadata and derived gas cost. Both generated transitions are marked as
-// conflict-immune (SkipConflictCheck = true) because gas payments must always commit
-// regardless of whether the transaction succeeds or reverts.
-//
-// If the sender is the coinbase, or if the corresponding balance transitions cannot be found,
-// this function returns an empty slice.
 func (this *TransactionNormalizer) NormalizeGas(rawStateAccesses []*StateCell) []*StateCell {
 	if this.msg.Native.From == this.Coinbase {
 		return nil
@@ -92,23 +95,27 @@ func (this *TransactionNormalizer) NormalizeGas(rawStateAccesses []*StateCell) [
 
 	Immuned := []*StateCell{}
 
+	senderString := hex.EncodeToString(this.msg.Native.From[:])
 	_, senderBalance := slice.FindFirstIf(rawStateAccesses, func(_ int, v *StateCell) bool { //It includes the gas fee and possible transfers.
 		return v != nil &&
 			strings.HasSuffix(*v.GetPath(), "/balance") &&
-			strings.Contains(*v.GetPath(), hex.EncodeToString(this.msg.Native.From[:]))
+			strings.Contains(*v.GetPath(), senderString)
 	})
 
+	coinbaseString := hex.EncodeToString(this.Coinbase[:])
 	_, coinbaseBalance := slice.FindFirstIf(rawStateAccesses, func(_ int, v *StateCell) bool {
 		return v != nil &&
 			strings.HasSuffix(*v.GetPath(), "/balance") &&
-			strings.Contains(*v.GetPath(), hex.EncodeToString(this.Coinbase[:]))
+			strings.Contains(*v.GetPath(), coinbaseString)
 	})
 
-	// Usually, neither the sender balance nor the coinbase balance can't be nil unless the transaction
+	// Usually, neither the sender balance nor the coinbase balance can be nil unless the transaction
 	// is a L1->L2 transaction derived from a transaction receipt and the network is in a L2 setup.
 	if senderBalance != nil && coinbaseBalance != nil {
 		// Separate the gas fee from the balance change and generate a new transition for that. It will be immune to the execution status.
-		gasUsedInWei := new(uint256.Int).Mul(uint256.NewInt(this.gasUsed), uint256.NewInt(this.gasPrice))
+		gasPrice := &uint256.Int{}
+		gasPrice.SetFromBig(this.msg.Native.GasPrice)
+		gasUsedInWei := new(uint256.Int).Mul(uint256.NewInt(this.gasUsed), gasPrice)
 		if debit := this.insertGasTransition(*senderBalance, gasUsedInWei, false); debit != nil {
 			Immuned = append(Immuned, debit)
 		}
@@ -134,7 +141,7 @@ func (this *TransactionNormalizer) NormalizeGas(rawStateAccesses []*StateCell) [
 func (this *TransactionNormalizer) NormalizeNonce(rawStateAccesses []*StateCell) []*StateCell {
 	Immuned := []*StateCell{}
 	_, senderNonce := slice.FindFirstIf(rawStateAccesses, func(_ int, v *StateCell) bool {
-		return strings.HasSuffix(*v.GetPath(), "/nonce") && strings.Contains(*v.GetPath(), hex.EncodeToString(this.msg.Native.From[:]))
+		return strings.Contains(*v.GetPath(), "/nonce") && strings.Contains(*v.GetPath(), hex.EncodeToString(this.msg.Native.From[:]))
 	})
 
 	if senderNonce != nil {
