@@ -25,7 +25,7 @@ import (
 	"math/big"
 
 	codec "github.com/arcology-network/common-lib/codec"
-	stgcommon "github.com/arcology-network/storage-committer/common"
+	stgcommon "github.com/arcology-network/state-engine/common"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 

@@ -21,8 +21,8 @@ import (
 	"runtime"
 
 	"github.com/arcology-network/common-lib/exp/slice"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
-	// intf "github.com/arcology-network/storage-committer/interfaces"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
+	// intf "github.com/arcology-network/state-engine/interfaces"
 )
 
 // An index by account address, transitions have the same Eth account address will be put together in a list

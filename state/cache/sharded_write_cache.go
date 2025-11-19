@@ -23,9 +23,9 @@ import (
 	"runtime"
 
 	slice "github.com/arcology-network/common-lib/exp/slice"
-	intf "github.com/arcology-network/storage-committer/common"
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	intf "github.com/arcology-network/state-engine/common"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 const (
@@ -63,8 +63,8 @@ func (this *ShardedStateCache) NewStateCell(k string) *statecell.StateCell {
 }
 
 // ONLY THE TX WRITECACHE HAS THE NEED TO SUPPORT GET OR NOW
-// func (this *ShardedStateCache) RetriveOrCreate(tx uint64, path string, T any) (*statecell.StateCell, bool) {
-// 	return this.caches[this.hasher(path)%NUM_SHARDS].RetriveOrCreate(tx, path, T)
+// func (this *ShardedStateCache) RetrieveOrCreate(tx uint64, path string, T any) (*statecell.StateCell, bool) {
+// 	return this.caches[this.hasher(path)%NUM_SHARDS].RetrieveOrCreate(tx, path, T)
 // }
 
 func (this *ShardedStateCache) Read(tx uint64, path string, T any) (interface{}, interface{}, uint64) {
@@ -79,8 +79,8 @@ func (this *ShardedStateCache) Write(tx uint64, path string, value interface{}) 
 // 	return this.caches[this.hasher(path)%NUM_SHARDS].GetIfCached(path)
 // }
 
-func (this *ShardedStateCache) Retrive(path string, T any) (interface{}, error) {
-	return this.caches[this.hasher(path)%NUM_SHARDS].Retrive(path, T)
+func (this *ShardedStateCache) Retrieve(path string, T any) (interface{}, error) {
+	return this.caches[this.hasher(path)%NUM_SHARDS].Retrieve(path, T)
 }
 
 func (this *ShardedStateCache) IfExists(path string) bool {

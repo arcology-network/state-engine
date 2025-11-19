@@ -74,7 +74,7 @@ type Writer[T any] interface {
 type ReadOnlyStore interface {
 	IfExists(string) bool                 // Check if the key exists in the source, which can be a cache or a storage.
 	ReadStorage(string, any) (any, error) // Get from persistent storage.
-	Retrive(string, any) (any, error)
+	Retrieve(string, any) (any, error)
 	Preload([]byte) any
 }
 

@@ -19,11 +19,12 @@ package remote
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 
-	datastore "github.com/arcology-network/storage-committer/storage/livestorage"
+	datastore "github.com/arcology-network/state-engine/storage/livestorage"
 )
 
 type ReadonlyClient struct {
@@ -47,7 +48,7 @@ func NewReadonlyClient(addr string, path string, args ...interface{}) *ReadonlyC
 // Get from the server connected
 func (this *ReadonlyClient) Get(key string) ([]byte, error) {
 	if this.localStore != nil {
-		v, err := this.localStore.Retrive(key, nil)
+		v, err := this.localStore.Retrieve(key, nil)
 		if err != nil {
 			return []byte{}, err
 		}
@@ -89,7 +90,7 @@ func (this *ReadonlyClient) BatchGet(keys []string) ([][]byte, error) {
 
 	} else {
 		// Get from the server
-		return nil, nil
+		return nil, fmt.Errorf("REMOTE READ NOT IMPLEMENTED")
 	}
 }
 

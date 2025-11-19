@@ -21,8 +21,8 @@ import (
 	codec "github.com/arcology-network/common-lib/codec"
 	"github.com/arcology-network/common-lib/common"
 
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	stgcodec "github.com/arcology-network/storage-committer/type/common"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	stgcodec "github.com/arcology-network/state-engine/type/common"
 )
 
 func (this *StateCell) Encode() []byte {

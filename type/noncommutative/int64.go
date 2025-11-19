@@ -21,7 +21,7 @@ import (
 	"math"
 
 	"github.com/arcology-network/common-lib/common"
-	intf "github.com/arcology-network/storage-committer/common"
+	intf "github.com/arcology-network/state-engine/common"
 )
 
 type Int64 int64

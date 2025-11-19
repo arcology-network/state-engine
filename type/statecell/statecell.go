@@ -27,8 +27,8 @@ import (
 
 	"github.com/arcology-network/common-lib/common"
 	"github.com/arcology-network/common-lib/exp/slice"
-	intf "github.com/arcology-network/storage-committer/common"
-	"github.com/arcology-network/storage-committer/type/noncommutative"
+	intf "github.com/arcology-network/state-engine/common"
+	"github.com/arcology-network/state-engine/type/noncommutative"
 	"github.com/cespare/xxhash"
 )
 

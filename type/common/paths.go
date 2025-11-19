@@ -23,9 +23,9 @@ import (
 	common "github.com/arcology-network/common-lib/common"
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	commutative "github.com/arcology-network/storage-committer/type/commutative"
-	noncommutative "github.com/arcology-network/storage-committer/type/noncommutative"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	commutative "github.com/arcology-network/state-engine/type/commutative"
+	noncommutative "github.com/arcology-network/state-engine/type/noncommutative"
 )
 
 type Platform struct {

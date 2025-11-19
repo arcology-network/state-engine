@@ -1,4 +1,4 @@
-module github.com/arcology-network/storage-committer
+module github.com/arcology-network/state-engine
 
 go 1.22
 

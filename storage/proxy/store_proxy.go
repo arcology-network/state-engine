@@ -22,18 +22,18 @@ import (
 
 	ccbadger "github.com/arcology-network/common-lib/storage/badger"
 	memdb "github.com/arcology-network/common-lib/storage/memdb"
-	"github.com/arcology-network/storage-committer/type/commutative"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	"github.com/arcology-network/state-engine/type/commutative"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 
-	// intf "github.com/arcology-network/storage-committer/interfaces"
-	intf "github.com/arcology-network/storage-committer/common"
+	// intf "github.com/arcology-network/state-engine/interfaces"
+	intf "github.com/arcology-network/state-engine/common"
 
-	"github.com/arcology-network/storage-committer/storage/ethstorage"
-	ethstg "github.com/arcology-network/storage-committer/storage/ethstorage"
-	livecache "github.com/arcology-network/storage-committer/storage/livecache"
-	ccstorage "github.com/arcology-network/storage-committer/storage/livestorage"
-	livestg "github.com/arcology-network/storage-committer/storage/livestorage"
-	stgtypecommon "github.com/arcology-network/storage-committer/type/common"
+	"github.com/arcology-network/state-engine/storage/ethstorage"
+	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
+	livecache "github.com/arcology-network/state-engine/storage/livecache"
+	ccstorage "github.com/arcology-network/state-engine/storage/livestorage"
+	livestg "github.com/arcology-network/state-engine/storage/livestorage"
+	stgtypecommon "github.com/arcology-network/state-engine/type/common"
 )
 
 // StorageProxy is a proxy for the storage, it consists of multiple storages and caches.
@@ -117,10 +117,10 @@ func (this *StorageProxy) ReadStorage(key string, T any) (any, error) {
 	if v, ok := this.execCache.Get(key); ok { // Check the cache first
 		return v, nil
 	}
-	return this.execStorage.Retrive(key, T)
+	return this.execStorage.Retrieve(key, T)
 }
 
-func (this *StorageProxy) Retrive(key string, v any) (any, error) {
+func (this *StorageProxy) Retrieve(key string, v any) (any, error) {
 	return this.ReadStorage(key, v)
 }
 

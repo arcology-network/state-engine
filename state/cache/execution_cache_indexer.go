@@ -19,8 +19,8 @@ package cache
 import (
 	common "github.com/arcology-network/common-lib/common"
 	"github.com/arcology-network/common-lib/exp/slice"
-	intf "github.com/arcology-network/storage-committer/common"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	intf "github.com/arcology-network/state-engine/common"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 // ExecutionCacheIndexer is the simpliest of all indexers. It does not index anything, just stores the transitions.

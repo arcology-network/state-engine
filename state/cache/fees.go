@@ -40,7 +40,7 @@ package cache
 
 // func (Fee) Writer(key string, v interface{}, writecache *StateCache) int64 { // May get refunds sometimes
 // 	committedSize := uint64(0)
-// 	committedv, _ := writecache.ReadOnlyStore().Retrive(key, v)
+// 	committedv, _ := writecache.ReadOnlyStore().Retrieve(key, v)
 
 // 	if data, ok := committedv.([]byte); ok {
 // 		committedSize = uint64(len(data))

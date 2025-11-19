@@ -23,7 +23,7 @@ import (
 	"math"
 
 	"github.com/arcology-network/common-lib/common"
-	stgcommon "github.com/arcology-network/storage-committer/common"
+	stgcommon "github.com/arcology-network/state-engine/common"
 )
 
 type Int64 struct {

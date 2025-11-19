@@ -21,8 +21,8 @@ import (
 	"github.com/arcology-network/common-lib/exp/associative"
 	"github.com/arcology-network/common-lib/exp/slice"
 	"github.com/arcology-network/common-lib/storage/indexer"
-	platform "github.com/arcology-network/storage-committer/type/common"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	platform "github.com/arcology-network/state-engine/type/common"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )

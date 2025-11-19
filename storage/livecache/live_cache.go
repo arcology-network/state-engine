@@ -23,10 +23,10 @@ import (
 	"github.com/arcology-network/common-lib/exp/associative"
 	"github.com/arcology-network/common-lib/exp/slice"
 	cache "github.com/arcology-network/common-lib/storage/cache"
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 
-	// intf "github.com/arcology-network/storage-committer/interfaces"
+	// intf "github.com/arcology-network/state-engine/interfaces"
 
 	"github.com/cespare/xxhash/v2"
 )

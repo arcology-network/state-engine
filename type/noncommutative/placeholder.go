@@ -18,7 +18,7 @@
 package noncommutative
 
 import (
-	stgcommon "github.com/arcology-network/storage-committer/common"
+	stgcommon "github.com/arcology-network/state-engine/common"
 )
 
 // Placeholder is a type that does not hold any value and is used as a placeholder in Archology's storage system.

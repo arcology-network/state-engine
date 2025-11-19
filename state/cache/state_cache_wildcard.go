@@ -20,7 +20,7 @@ package cache
 import (
 	"bytes"
 
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 // PreloadMatched preloads the paths that match the wildcard delete path that are about to be deleted by the

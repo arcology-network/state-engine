@@ -23,8 +23,8 @@ import (
 
 	"github.com/arcology-network/common-lib/exp/slice"
 	"github.com/arcology-network/common-lib/exp/softdeltaset"
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	commutative "github.com/arcology-network/storage-committer/type/commutative"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	commutative "github.com/arcology-network/state-engine/type/commutative"
 	"github.com/holiman/uint256"
 )
 

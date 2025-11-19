@@ -26,8 +26,8 @@ import (
 	"github.com/arcology-network/common-lib/exp/associative"
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 type Profile struct {

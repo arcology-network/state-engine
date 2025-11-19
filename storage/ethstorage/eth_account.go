@@ -27,12 +27,12 @@ import (
 	"github.com/arcology-network/common-lib/codec"
 	common "github.com/arcology-network/common-lib/common"
 	"github.com/arcology-network/common-lib/exp/slice"
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	commutative "github.com/arcology-network/storage-committer/type/commutative"
-	noncommutative "github.com/arcology-network/storage-committer/type/noncommutative"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	commutative "github.com/arcology-network/state-engine/type/commutative"
+	noncommutative "github.com/arcology-network/state-engine/type/noncommutative"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 
-	platform "github.com/arcology-network/storage-committer/type/common"
+	platform "github.com/arcology-network/state-engine/type/common"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -197,7 +197,7 @@ func (this *Account) Has(key string) bool {
 	return len(buffer) > 0
 }
 
-func (this *Account) Retrive(key string, T any) (interface{}, error) {
+func (this *Account) Retrieve(key string, T any) (interface{}, error) {
 	if strings.HasSuffix(key, "/balance") {
 		balance, _ := uint256.FromBig(this.StateAccount.Balance.ToBig())
 		v := commutative.NewUnboundedU256()

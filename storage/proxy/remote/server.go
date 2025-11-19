@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"net/http"
 
-	datastore "github.com/arcology-network/storage-committer/storage/livestorage"
+	datastore "github.com/arcology-network/state-engine/storage/livestorage"
 )
 
 type ReadonlyServer struct {
@@ -41,7 +41,7 @@ func NewReadonlyServer(addr string, encoder func(interface{}) []byte, decoder fu
 }
 
 func (this *ReadonlyServer) Get(path string) ([]byte, error) {
-	val, err := this.dataStore.Retrive(path, nil)
+	val, err := this.dataStore.Retrieve(path, nil)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -52,7 +52,7 @@ func (this *ReadonlyServer) Get(path string) ([]byte, error) {
 func (this *ReadonlyServer) BatchGet(paths []string) ([][]byte, error) {
 	bytes := make([][]byte, len(paths))
 	for i, v := range paths {
-		val, err := this.dataStore.Retrive(v, nil)
+		val, err := this.dataStore.Retrieve(v, nil)
 		if err != nil {
 			fmt.Printf("ReadonlyServer BatchGet err: %v k: %v\n", err, v)
 			continue
@@ -67,7 +67,7 @@ func (this *ReadonlyServer) Receive(writer http.ResponseWriter, request *http.Re
 	case "GET":
 		if err := request.ParseForm(); err == nil {
 			key := request.FormValue("key")
-			if v, _ := this.dataStore.Retrive(key, nil); v != nil {
+			if v, _ := this.dataStore.Retrieve(key, nil); v != nil {
 				writer.Write(this.encoder(v))
 			}
 		}

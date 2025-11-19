@@ -19,10 +19,10 @@ package cache
 import (
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	slice "github.com/arcology-network/common-lib/exp/slice"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 
-	// stgcommon "github.com/arcology-network/storage-committer/common"
-	stgcommon "github.com/arcology-network/storage-committer/common"
+	// stgcommon "github.com/arcology-network/state-engine/common"
+	stgcommon "github.com/arcology-network/state-engine/common"
 )
 
 // StateCacheFilter is a post processing filter for StateCache.
@@ -33,7 +33,7 @@ type StateCacheFilter struct {
 	ignoreAddresses map[string]bool
 }
 
-func NewStateCacheFilter(writeCache interface{}) *StateCacheFilter {
+func NewStateCacheFilter(writeCache any) *StateCacheFilter {
 	return &StateCacheFilter{
 		writeCache.(*StateCache),
 		map[string]bool{},

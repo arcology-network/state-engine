@@ -18,9 +18,9 @@
 package common
 
 import (
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	commutative "github.com/arcology-network/storage-committer/type/commutative"
-	noncommutative "github.com/arcology-network/storage-committer/type/noncommutative"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	commutative "github.com/arcology-network/state-engine/type/commutative"
+	noncommutative "github.com/arcology-network/state-engine/type/noncommutative"
 )
 
 type Codec struct {

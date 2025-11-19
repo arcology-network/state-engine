@@ -38,10 +38,10 @@ import (
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	mempool "github.com/arcology-network/common-lib/exp/mempool"
 	slice "github.com/arcology-network/common-lib/exp/slice"
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	stgeth "github.com/arcology-network/storage-committer/type/common"
-	"github.com/arcology-network/storage-committer/type/commutative"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	stgeth "github.com/arcology-network/state-engine/type/common"
+	"github.com/arcology-network/state-engine/type/commutative"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 // StateCache is a read-only data backend used for caching.
@@ -184,7 +184,7 @@ func (this *StateCache) write(tx uint64, path string, value any) (*statecell.Sta
 
 // Get the raw value directly WITHOUT tracking the accessing record.
 // Users need to count access themselves.
-func (this *StateCache) Retrive(path string, T any) (any, error) {
+func (this *StateCache) Retrieve(path string, T any) (any, error) {
 	typedv, _, _ := this.FindForRead(stgcommon.SYSTEM, path, T, nil)
 	if typedv == nil || typedv.(stgcommon.Type).IsDeltaApplied() {
 		return typedv, nil
@@ -209,7 +209,7 @@ func (this *StateCache) Retrive(path string, T any) (any, error) {
 func (this *StateCache) LoadFromCommitted(tx uint64, path string, T any) *statecell.StateCell {
 	var typedv any
 	if backend := this.ReadOnlyStore(); backend != nil {
-		typedv, _ = backend.Retrive(path, T) // The backend could also be another instance of StateCache.
+		typedv, _ = backend.Retrieve(path, T) // The backend could also be another instance of StateCache.
 	}
 	return this.NewStateCell().Init(tx, path, 0, 0, 0, typedv, typedv != nil)
 }
@@ -269,7 +269,7 @@ func (this *StateCache) IfExists(path string) bool {
 		return false
 	}
 
-	flag := this.backend.IfExists(path) //this.RetriveShallow(path, nil) != nil
+	flag := this.backend.IfExists(path) //this.RetrieveShallow(path, nil) != nil
 	return flag
 }
 

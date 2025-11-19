@@ -23,7 +23,7 @@ import (
 
 	"github.com/arcology-network/common-lib/exp/associative"
 	"github.com/arcology-network/common-lib/exp/slice"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 type EthStorageWriter struct {

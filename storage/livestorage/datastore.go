@@ -74,7 +74,7 @@ func (this *LiveStorage) SetDB(db commonintf.PersistentStorage) { this.db = db }
 
 // No access tracking
 func (this *LiveStorage) IfExists(key string) bool {
-	v, _ := this.Retrive(key, nil)
+	v, _ := this.Retrieve(key, nil)
 	return v != nil
 }
 
@@ -109,7 +109,7 @@ func (this *LiveStorage) ReadStorage(key string, T any) (any, error) {
 	return nil, err
 }
 
-func (this *LiveStorage) Retrive(key string, T any) (any, error) {
+func (this *LiveStorage) Retrieve(key string, T any) (any, error) {
 	// Read from the local cache first
 	if v, _ := this.cache.Get(key); v != nil {
 		return *v, nil
@@ -122,7 +122,7 @@ func (this *LiveStorage) Retrive(key string, T any) (any, error) {
 	return v, err
 }
 
-func (this *LiveStorage) BatchRetrive(keys []string, T []any) []any {
+func (this *LiveStorage) BatchRetrieve(keys []string, T []any) []any {
 	values, _ := this.cache.BatchGet(keys) // From the local cache first
 	if slice.Count(values, nil) == 0 {     // All found
 		return values

@@ -21,8 +21,8 @@ import (
 	"strings"
 
 	common "github.com/arcology-network/common-lib/common"
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	"github.com/arcology-network/storage-committer/type/commutative"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	"github.com/arcology-network/state-engine/type/commutative"
 )
 
 // IPTransition stands for intra-process transition. It is used to filter out the fields that are not needed in inter-thread transitions to save

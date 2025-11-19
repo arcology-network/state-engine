@@ -21,11 +21,11 @@ import (
 
 	indexer "github.com/arcology-network/common-lib/storage/indexer"
 
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	statecell "github.com/arcology-network/storage-committer/type/statecell"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	statecell "github.com/arcology-network/state-engine/type/statecell"
 
-	// interfaces "github.com/arcology-network/storage-committer/interfaces"
-	interfaces "github.com/arcology-network/storage-committer/common"
+	// interfaces "github.com/arcology-network/state-engine/interfaces"
+	interfaces "github.com/arcology-network/state-engine/common"
 )
 
 // An index by path, transitions have the same path will be put together in a list

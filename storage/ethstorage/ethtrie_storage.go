@@ -27,8 +27,8 @@ import (
 
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
-	stgcommon "github.com/arcology-network/storage-committer/common"
-	platform "github.com/arcology-network/storage-committer/type/common"
+	stgcommon "github.com/arcology-network/state-engine/common"
+	platform "github.com/arcology-network/state-engine/type/common"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -249,7 +249,7 @@ func (this *EthDataStore) GetAccountFromTrie(address ethcommon.Address, accesses
 }
 
 // Skip the cache and get from the trie
-func (this *EthDataStore) Retrive(key string, T any) (any, error) {
+func (this *EthDataStore) Retrieve(key string, T any) (any, error) {
 	accesses := ethmpt.AccessListCache{}
 	_, acctKey, _ := platform.ParseAccountAddr(key) // Get the address
 	if len(acctKey) == 0 {
@@ -266,7 +266,7 @@ func (this *EthDataStore) Retrive(key string, T any) (any, error) {
 	account, err := this.GetAccount(address, &accesses)
 
 	if account != nil {
-		return account.Retrive(key, T) // Get the storage from the key
+		return account.Retrieve(key, T) // Get the storage from the key
 	}
 	return nil, err
 }
@@ -338,10 +338,10 @@ func (this *EthDataStore) WriteToEthStorage(blockNum uint64, dirtyAccounts []*Ac
 	}
 }
 
-func (this *EthDataStore) BatchRetrive(keys []string, T []any) []any {
+func (this *EthDataStore) BatchRetrieve(keys []string, T []any) []any {
 	values := make([]any, len(keys))
 	for i := 0; i < len(keys); i++ {
-		values[i], _ = this.Retrive(keys[i], T[i])
+		values[i], _ = this.Retrieve(keys[i], T[i])
 	}
 	return values
 }

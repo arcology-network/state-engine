@@ -19,7 +19,7 @@ package statecell
 
 import (
 	"github.com/arcology-network/common-lib/common"
-	stgcommon "github.com/arcology-network/storage-committer/common"
+	stgcommon "github.com/arcology-network/state-engine/common"
 )
 
 // IPAccess is purely for inter-process communication, the valuee get copied in

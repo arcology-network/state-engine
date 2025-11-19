@@ -26,7 +26,7 @@ import (
 	"github.com/arcology-network/common-lib/exp/orderedset"
 	"github.com/arcology-network/common-lib/exp/slice"
 	softdeltaset "github.com/arcology-network/common-lib/exp/softdeltaset"
-	stgcommon "github.com/arcology-network/storage-committer/common"
+	stgcommon "github.com/arcology-network/state-engine/common"
 )
 
 // The Path type is a special commutative type that represents a path in the concurrent storage.
@@ -53,7 +53,7 @@ func NewPath(newPaths ...string) stgcommon.Type {
 // The entries that need to be deleted when the path is deleted.
 func (this *Path) GetCascadeSub(prefix string, source any) []string {
 	store := source.(interface {
-		Retrive(string, any) (any, error)
+		Retrieve(string, any) (any, error)
 	})
 
 	subElem := this.DeltaSet.Elements()
@@ -71,7 +71,7 @@ func (this *Path) GetCascadeSub(prefix string, source any) []string {
 		}
 
 		for i := range subPaths {
-			if path, _ := store.Retrive(subPaths[i], new(Path)); path != nil {
+			if path, _ := store.Retrieve(subPaths[i], new(Path)); path != nil {
 				underSubPaths := path.(*Path).GetCascadeSub(subPaths[i], store)
 				pathStrs = append(pathStrs, underSubPaths...)
 			}
@@ -119,10 +119,10 @@ func (this *Path) Preload(k string, source any) {
 	}
 
 	store := source.(interface {
-		Retrive(string, any) (any, error)
+		Retrieve(string, any) (any, error)
 	})
 
-	if v, err := store.Retrive(k, new(Path)); v != nil && err == nil && v.(*Path).Committed().Length() > 0 {
+	if v, err := store.Retrieve(k, new(Path)); v != nil && err == nil && v.(*Path).Committed().Length() > 0 {
 		this.preloaded = v.(*Path).Committed()
 	}
 }

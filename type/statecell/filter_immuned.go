@@ -23,7 +23,7 @@ import (
 
 	"github.com/arcology-network/common-lib/exp/slice"
 	libcommon "github.com/arcology-network/common-lib/types"
-	stgcommon "github.com/arcology-network/storage-committer/common"
+	statecommon "github.com/arcology-network/state-engine/common"
 	"github.com/holiman/uint256"
 )
 
@@ -60,7 +60,7 @@ func NewTransactionNormalizer(gasUsed uint64, coinbase [20]byte, msg *libcommon.
 // delta set to the exact gas amount. The returned transition always has
 // SkipConflictCheck enabled so it commits unconditionally.
 func (this *TransactionNormalizer) insertGasTransition(balanceTransition *StateCell, gasDelta *uint256.Int, isCredit bool) *StateCell {
-	v, _ := balanceTransition.Value().(stgcommon.Type).Delta()
+	v, _ := balanceTransition.Value().(statecommon.Type).Delta()
 	totalDelta := v.(uint256.Int)
 
 	if totalDelta.Cmp(gasDelta) == 0 { // Balance change == gas fee paid.
@@ -70,8 +70,8 @@ func (this *TransactionNormalizer) insertGasTransition(balanceTransition *StateC
 
 	// Separate the gas fee from the balance change and generate a new transition for that.
 	gasTransition := balanceTransition.Clone().(*StateCell)
-	gasTransition.Value().(stgcommon.Type).SetDelta(*gasDelta, isCredit) // Set the gas fee.
-	// gasTransition.Value().(stgcommon.Type).SetDeltaSign(isCredit) // Negative for the sender, positive for the coinbase.
+	gasTransition.Value().(statecommon.Type).SetDelta(*gasDelta, isCredit) // Set the gas fee.
+	// gasTransition.Value().(statecommon.Type).SetDeltaSign(isCredit) // Negative for the sender, positive for the coinbase.
 	gasTransition.Property.SkipConflictCheck(true)
 	return gasTransition
 }
