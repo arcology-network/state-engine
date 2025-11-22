@@ -20,11 +20,11 @@ package statestore
 
 import (
 	"github.com/arcology-network/common-lib/common"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	indexer "github.com/arcology-network/common-lib/storage/indexer"
+	platform "github.com/arcology-network/state-engine/common"
 	stgcommon "github.com/arcology-network/state-engine/common"
 	cache "github.com/arcology-network/state-engine/state/cache"
-	platform "github.com/arcology-network/state-engine/type/common"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
 
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"

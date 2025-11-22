@@ -17,7 +17,7 @@
 
 package ccstorage
 
-import statecell "github.com/arcology-network/state-engine/type/statecell"
+import statecell "github.com/arcology-network/common-lib/crdt/statecell"
 
 // LiveStorageWriter is a struct that contains data structure and methods for writing data to concurrent storage.
 // It manages buffered writes and supports both synchronous and asynchronous commit operations to the underlying storage.

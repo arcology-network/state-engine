@@ -18,18 +18,47 @@
 package ethstorage
 
 import (
-	stgcommon "github.com/arcology-network/state-engine/common"
+
+	// "github.com/arcology-network/concurrenturl/commutative"
+	commcodec "github.com/arcology-network/state-engine/storage/ethcodec/rlp/commutative"
+	noncommcodec "github.com/arcology-network/state-engine/storage/ethcodec/rlp/noncommutative"
+
+	commutative "github.com/arcology-network/common-lib/crdt/commutative"
+	noncommutative "github.com/arcology-network/common-lib/crdt/noncommutative"
 )
 
 type Rlp struct{}
 
-func (Rlp) Encode(key string, v any) []byte {
+func (Rlp) Encode(key string, v any) ([]byte, error) {
 	if v == nil {
-		return []byte{} // Deletion
+		return []byte{}, nil // Deletion
 	}
-	return v.(stgcommon.Type).StorageEncode(key)
+
+	switch v.(type) {
+	case commutative.Int64:
+		return (&commcodec.Int64{Int64: v.(commutative.Int64)}).Encode()
+	case noncommutative.Bigint:
+		return (&noncommcodec.Bigint{Bigint: v.(noncommutative.Bigint)}).Encode()
+	case noncommutative.Bytes:
+		return (&noncommcodec.Bytes{Bytes: v.(noncommutative.Bytes)}).Encode()
+	case noncommutative.String:
+		return (&noncommcodec.String{String: v.(noncommutative.String)}).Encode()
+	default:
+		panic("unsupported type for Rlp codec")
+	}
 }
 
 func (Rlp) Decode(key string, buffer []byte, T any) any {
-	return T.(stgcommon.Type).StorageDecode(key, buffer)
+	switch T.(type) {
+	case commutative.Int64:
+		return new(commcodec.Int64).Decode(buffer)
+	case noncommutative.Bigint:
+		return new(noncommcodec.Bigint).Decode(buffer)
+	case noncommutative.Bytes:
+		return new(noncommcodec.Bytes).Decode(buffer)
+	case noncommutative.String:
+		return new(noncommcodec.String).Decode(buffer)
+	default:
+		panic("unsupported type for Rlp codec")
+	}
 }

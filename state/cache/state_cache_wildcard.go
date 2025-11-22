@@ -20,7 +20,7 @@ package cache
 import (
 	"bytes"
 
-	statecell "github.com/arcology-network/state-engine/type/statecell"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 )
 
 // PreloadMatched preloads the paths that match the wildcard delete path that are about to be deleted by the
@@ -42,7 +42,7 @@ func (this *StateCache) MatchWildcard(path string, T any) (bool, *statecell.Stat
 }
 
 // WildcardsToUnivalue converts wildcard paths to StateCell for exporting.
-func (this *StateCache) WildcardsToUnivalue() []*statecell.StateCell {
+func (this *StateCache) WildcardsToStateCell() []*statecell.StateCell {
 	univs := make([]*statecell.StateCell, 0)
 	for _, wildcardPath := range this.committedDel {
 		newV := statecell.NewStateCell(wildcardPath.First, wildcardPath.Second+"*", 0, 1, 0, nil, nil)

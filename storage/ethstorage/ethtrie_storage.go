@@ -27,8 +27,8 @@ import (
 
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
-	stgcommon "github.com/arcology-network/state-engine/common"
-	platform "github.com/arcology-network/state-engine/type/common"
+	platform "github.com/arcology-network/state-engine/common"
+	statecommon "github.com/arcology-network/state-engine/common"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -57,7 +57,7 @@ type EthDataStore struct {
 	lock     sync.RWMutex
 	rootDict map[uint64][32]byte // lookup the root hash for a block number
 
-	encoder func(string, any) []byte
+	encoder func(string, any) ([]byte, error)
 	decoder func(string, []byte, any) any
 
 	dbErr error
@@ -189,7 +189,7 @@ func (this *EthDataStore) IfExists(key string) bool {
 
 	address := ethcommon.BytesToAddress(acctBytes)
 	if v := this.accountCache[address]; v != nil {
-		return len(key) == stgcommon.ETH_ACCOUNT_FULL_LENGTH+1 || v.Has(key) // If the account has the key
+		return len(key) == statecommon.ETH_ACCOUNT_FULL_LENGTH+1 || v.Has(key) // If the account has the key
 	}
 
 	// Not in cache, look up in the trie
@@ -233,14 +233,14 @@ func (this *EthDataStore) GetAccountFromTrie(address ethcommon.Address, accesses
 		stgTrie, err := ethmpt.New(ethmpt.TrieID(acctState.Root), this.EthDB()) // Get the storage trie
 		if stgTrie != nil && err == nil {
 			return &Account{
-				address,
-				acctState,
-				common.FilterFirst(this.diskdbs[0].Get(acctState.CodeHash)).([]byte), // code
-				stgTrie,
-				false,
-				this.ethdb,
-				this.diskdbs,
-				nil,
+				addr:         address,
+				StateAccount: acctState,
+				code:         common.FilterFirst(this.diskdbs[0].Get(acctState.CodeHash)).([]byte), // code
+				storageTrie:  stgTrie,
+				StorageDirty: false,
+				ethdb:        this.ethdb,
+				diskdbShards: this.diskdbs,
+				err:          nil,
 			}, nil
 		}
 		return nil, err
@@ -351,14 +351,14 @@ func (this *EthDataStore) DiskDBs() [16]ethdb.Database {
 }
 
 // Place holders
-func (this *EthDataStore) Root() [32]byte                            { return this.worldStateTrie.Hash() }
-func (this *EthDataStore) Encoder(any) func(string, any) []byte      { return this.encoder }
-func (this *EthDataStore) Decoder(any) func(string, []byte, any) any { return this.decoder }
-func (this *EthDataStore) EthDB() *triedb.Database                   { return this.ethdb }
-func (this *EthDataStore) Trie() *ethmpt.Trie                        { return this.worldStateTrie }
-func (this *EthDataStore) UpdateCacheStats([]any)                    {}
-func (this *EthDataStore) Print()                                    {}
-func (this *EthDataStore) CheckSum() [32]byte                        { return [32]byte{} }
+func (this *EthDataStore) Root() [32]byte                                { return this.worldStateTrie.Hash() }
+func (this *EthDataStore) Encoder(any) func(string, any) ([]byte, error) { return this.encoder }
+func (this *EthDataStore) Decoder(any) func(string, []byte, any) any     { return this.decoder }
+func (this *EthDataStore) EthDB() *triedb.Database                       { return this.ethdb }
+func (this *EthDataStore) Trie() *ethmpt.Trie                            { return this.worldStateTrie }
+func (this *EthDataStore) UpdateCacheStats([]any)                        {}
+func (this *EthDataStore) Print()                                        {}
+func (this *EthDataStore) CheckSum() [32]byte                            { return [32]byte{} }
 func (this *EthDataStore) Query(string, func(string, string) bool) ([]string, [][]byte, error) {
 	return nil, nil, nil
 }

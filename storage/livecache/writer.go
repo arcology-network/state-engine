@@ -17,7 +17,7 @@
 
 package livecache
 
-import statecell "github.com/arcology-network/state-engine/type/statecell"
+import statecell "github.com/arcology-network/common-lib/crdt/statecell"
 
 // LiveCacheWriter writes to the LiveCache.
 

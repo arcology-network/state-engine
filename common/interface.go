@@ -17,51 +17,55 @@
 
 package common
 
-type Type interface { // value type
-	TypeID() uint8
-	Equal(any) bool
-	Clone() any
+import (
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+)
 
-	IsNumeric() bool
-	IsCommutative() bool // If the type is commutative, the order of the operands does not matter.
+// type Type interface { // value type
+// 	TypeID() uint8
+// 	Equal(any) bool
+// 	Clone() any
 
-	Value() any // Get() - read/write count
-	Delta() (any, bool)
+// 	IsNumeric() bool
+// 	IsCommutative() bool // If the type is commutative, the order of the operands does not matter.
 
-	Limits() (any, any) // Get the limits of the type, if applicable.
-	IsDeltaApplied() bool
+// 	Value() any // Get() - read/write count
+// 	Delta() (any, bool)
 
-	// Delta replication methods
-	New(any, any, any, any, any) any
-	CloneDelta() (any, bool)
-	SetDelta(any, bool)
-	SetValue(v any)
-	GetCascadeSub(string, any) []string // Get the sub paths for cascade delete, if applicable.
+// 	Limits() (any, any) // Get the limits of the type, if applicable.
+// 	IsDeltaApplied() bool
 
-	Get() (any, uint32, uint32) // Value, reads and writes, no deltawrites.
-	Set(any, any) (any, uint32, uint32, uint32, error)
-	CopyTo(any) (any, uint32, uint32, uint32) // Only a function to generate the right access counts, when assigning the value.
-	ApplyDelta([]Type) (Type, int, error)
-	IsDeletable(any, any) bool
+// 	// Delta replication methods
+// 	New(any, any, any, any, any) any
+// 	CloneDelta() (any, bool)
+// 	SetDelta(any, bool)
+// 	SetValue(v any)
+// 	GetCascadeSub(string, any) []string // Get the sub paths for cascade delete, if applicable.
 
-	MemSize() uint64 // Size in memory
+// 	Get() (any, uint32, uint32) // Value, reads and writes, no deltawrites.
+// 	Set(any, any) (any, uint32, uint32, uint32, error)
+// 	CopyTo(any) (any, uint32, uint32, uint32) // Only a function to generate the right access counts, when assigning the value.
+// 	ApplyDelta([]Type) (Type, int, error)
+// 	IsDeletable(any, any) bool
 
-	// Encoding methods
-	Size() uint64 // Encoded size
-	Encode() []byte
-	EncodeTo([]byte) int
-	Decode([]byte) any
+// 	MemSize() uint64 // Size in memory
 
-	// Storage encoding related methods
-	StorageEncode(string) []byte
-	StorageDecode(string, []byte) any
-	Preload(string, any)
+// 	// Encoding methods
+// 	Size() uint64 // Encoded size
+// 	Encode() []byte
+// 	EncodeTo([]byte) int
+// 	Decode([]byte) any
 
-	// Auxiliary methods
-	Hash() [32]byte
-	ShortHash() (uint64, bool) // For fast comparison only.
-	Print()
-}
+// 	// Storage encoding related methods
+// 	// StorageEncode(string) []byte
+// 	// StorageDecode(string, []byte) any
+// 	Preload(string, any)
+
+// 	// Auxiliary methods
+// 	Hash() [32]byte
+// 	ShortHash() (uint64, bool) // For fast comparison only.
+// 	Print()
+// }
 
 type Writer[T any] interface {
 	Import([]T)
@@ -78,4 +82,4 @@ type ReadOnlyStore interface {
 	Preload([]byte) any
 }
 
-type Hasher func(Type) []byte
+type Hasher func(crdtcommon.Type) []byte

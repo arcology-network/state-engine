@@ -20,20 +20,20 @@ package proxy
 import (
 	"math"
 
+	"github.com/arcology-network/common-lib/crdt/commutative"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	ccbadger "github.com/arcology-network/common-lib/storage/badger"
 	memdb "github.com/arcology-network/common-lib/storage/memdb"
-	"github.com/arcology-network/state-engine/type/commutative"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
 
 	// intf "github.com/arcology-network/state-engine/interfaces"
 	intf "github.com/arcology-network/state-engine/common"
 
+	statecommon "github.com/arcology-network/state-engine/common"
 	"github.com/arcology-network/state-engine/storage/ethstorage"
 	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
 	livecache "github.com/arcology-network/state-engine/storage/livecache"
 	ccstorage "github.com/arcology-network/state-engine/storage/livestorage"
 	livestg "github.com/arcology-network/state-engine/storage/livestorage"
-	stgtypecommon "github.com/arcology-network/state-engine/type/common"
 )
 
 // StorageProxy is a proxy for the storage, it consists of multiple storages and caches.
@@ -47,7 +47,7 @@ import (
 // The EthStorage won't be used for the execution cache, it is only used for user APIs to query the Ethereum state data.
 
 type StorageProxy struct {
-	platform    *stgtypecommon.Platform
+	platform    *statecommon.Platform
 	execCache   *livecache.LiveCache // An object cache for the backend storage, only updated once at the end of the block.
 	execStorage *livestg.LiveStorage
 	ethStorage  *ethstg.EthDataStore
@@ -56,12 +56,12 @@ type StorageProxy struct {
 // Cache may also have its storeage, this is the cache only store proxy, no storage.
 func NewCacheOnlyStoreProxy() *StorageProxy {
 	proxy := &StorageProxy{
-		platform:   stgtypecommon.NewPlatform(),
+		platform:   statecommon.NewPlatform(),
 		ethStorage: ethstg.NewParallelEthMemDataStore(), //ethstg.NewParallelEthMemDataStore(),
 		execStorage: livestg.NewLiveStorage(
 			nil,
-			stgtypecommon.Codec{}.Encode,
-			stgtypecommon.Codec{}.Decode,
+			statecommon.Codec{}.Encode,
+			statecommon.Codec{}.Decode,
 		),
 	}
 
@@ -77,15 +77,15 @@ func NewMemDBStoreProxy() *StorageProxy {
 
 func NewLevelDBStoreProxy(dbpath string) *StorageProxy {
 	proxy := &StorageProxy{
-		platform:   stgtypecommon.NewPlatform(),
+		platform:   statecommon.NewPlatform(),
 		ethStorage: ethstg.NewLevelDBDataStore(dbpath), //ethstg.NewParallelEthMemDataStore(),
 		execCache:  livecache.NewLiveCache(math.MaxUint64),
 		execStorage: livestg.NewLiveStorage(
 			// memdb.NewMemoryDB(),
 			ccbadger.NewBadgerDB(dbpath+"_badager"),
 			// ccbadger.NewParaBadgerDB(dbpath+"_pbadager", common.Remainder),
-			stgtypecommon.Codec{}.Encode,
-			stgtypecommon.Codec{}.Decode,
+			statecommon.Codec{}.Encode,
+			statecommon.Codec{}.Decode,
 		),
 	}
 	// proxy.execCache = livecache.NewLiveCache(math.MaxUint64)
@@ -179,5 +179,5 @@ func (this *StorageProxy) RemoveTransients(tran *statecell.StateCell) bool {
 
 // Filter out the transitions that are not needed to be persisted.
 func (this *StorageProxy) EthOnly(tran *statecell.StateCell) bool {
-	return stgtypecommon.IsEthPath(*tran.GetPath())
+	return statecommon.IsEthPath(*tran.GetPath())
 }

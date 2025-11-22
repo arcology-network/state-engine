@@ -19,9 +19,9 @@ package livecache
 import (
 	"runtime"
 
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/slice"
-	stgcommon "github.com/arcology-network/state-engine/common"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 // LiveCacheIndexer is simpliest  of indexers. It does not index anything, just stores the transitions.
@@ -30,7 +30,7 @@ type LiveCacheIndexer struct {
 	buffer       []*statecell.StateCell
 	importBuffer []*statecell.StateCell
 	keys         []string
-	values       []stgcommon.Type
+	values       []crdtcommon.Type
 	filter       func(*statecell.StateCell) bool
 }
 
@@ -40,7 +40,7 @@ func NewLiveCacheIndexer(store *LiveCache, Version int64, filter func(*statecell
 		importBuffer: []*statecell.StateCell{},
 		keys:         []string{},
 		filter:       filter,
-		values:       []stgcommon.Type{},
+		values:       []crdtcommon.Type{},
 	}
 }
 
@@ -63,10 +63,10 @@ func (this *LiveCacheIndexer) Finalize() {
 	slice.RemoveIf((*[]*statecell.StateCell)(&this.buffer), func(i int, v *statecell.StateCell) bool { return v.GetPath() == nil })
 
 	this.keys = make([]string, len(this.buffer))
-	this.values = slice.ParallelTransform(this.buffer, runtime.NumCPU(), func(i int, v *statecell.StateCell) stgcommon.Type {
+	this.values = slice.ParallelTransform(this.buffer, runtime.NumCPU(), func(i int, v *statecell.StateCell) crdtcommon.Type {
 		this.keys[i] = *v.GetPath()
 		if v.Value() != nil {
-			return v.Value().(stgcommon.Type)
+			return v.Value().(crdtcommon.Type)
 		}
 		return nil // A deletion
 	})
@@ -87,7 +87,7 @@ func (this *LiveCacheIndexer) Merge(idxers []*LiveCacheIndexer) *LiveCacheIndexe
 
 	// this.values = slice.ConcateDo(idxers,
 	// 	func(idxer *LiveCacheIndexer) uint64 { return uint64(len(idxer.values)) },
-	// 	func(idxer *LiveCacheIndexer) []stgcommon.Type { return idxer.values })
+	// 	func(idxer *LiveCacheIndexer) []crdtcommon.Type { return idxer.values })
 
 	return this
 }

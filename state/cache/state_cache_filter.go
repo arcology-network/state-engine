@@ -17,9 +17,9 @@
 package cache
 
 import (
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	slice "github.com/arcology-network/common-lib/exp/slice"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
 
 	// stgcommon "github.com/arcology-network/state-engine/common"
 	stgcommon "github.com/arcology-network/state-engine/common"

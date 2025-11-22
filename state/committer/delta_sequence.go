@@ -27,9 +27,10 @@ package statestore
 import (
 	"sort"
 
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/slice"
 	stgcommon "github.com/arcology-network/state-engine/common"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 type DeltaSequence []*statecell.StateCell
@@ -82,9 +83,9 @@ func (this DeltaSequence) Finalized() *statecell.StateCell { return this[0] }
 
 type DeltaSequences []DeltaSequence
 
-func (this DeltaSequences) Finalized() []stgcommon.Type {
-	return slice.Transform(this, func(_ int, v DeltaSequence) stgcommon.Type {
-		return v[0].Value().(stgcommon.Type)
+func (this DeltaSequences) Finalized() []crdtcommon.Type {
+	return slice.Transform(this, func(_ int, v DeltaSequence) crdtcommon.Type {
+		return v[0].Value().(crdtcommon.Type)
 	})
 }
 

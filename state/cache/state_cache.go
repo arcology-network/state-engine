@@ -34,14 +34,15 @@ import (
 	"strings"
 
 	common "github.com/arcology-network/common-lib/common"
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	"github.com/arcology-network/common-lib/crdt/commutative"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/associative"
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	mempool "github.com/arcology-network/common-lib/exp/mempool"
 	slice "github.com/arcology-network/common-lib/exp/slice"
 	stgcommon "github.com/arcology-network/state-engine/common"
-	stgeth "github.com/arcology-network/state-engine/type/common"
-	"github.com/arcology-network/state-engine/type/commutative"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
+	stgeth "github.com/arcology-network/state-engine/common"
 )
 
 // StateCache is a read-only data backend used for caching.
@@ -111,8 +112,8 @@ func (this *StateCache) ExistsInParent(path string) bool {
 	return false
 }
 
-// Get the raw value directly, put it in an empty univalue without recording
-// the access at the univalue level. Won't update the kvDict.
+// Get the raw value directly, put it in an empty cell without recording
+// the access. `Won't` update the kvDict.
 func (this *StateCache) FindForRead(tx uint64, path string, T any, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
 	if !this.ExistsInParent(path) {
 		return nil, this.NewStateCell().Init(tx, path, 0, 0, 0, nil, false), false
@@ -139,7 +140,7 @@ func (this *StateCache) FindForWrite(tx uint64, path string, T any, do func(*sta
 }
 
 func (this *StateCache) Write(tx uint64, path string, newVal any, args ...any) (int64, error) {
-	if newVal != nil && newVal.(stgcommon.Type).TypeID() == uint8(reflect.Invalid) { // Neither a valid replacement nor a delete operation.
+	if newVal != nil && newVal.(crdtcommon.Type).TypeID() == uint8(reflect.Invalid) { // Neither a valid replacement nor a delete operation.
 		return 0, errors.New("Error: Unknown data type !")
 	}
 
@@ -153,14 +154,14 @@ func (this *StateCache) Write(tx uint64, path string, newVal any, args ...any) (
 
 func (this *StateCache) write(tx uint64, path string, value any) (*statecell.StateCell, error) {
 	parentPath, _ := stgcommon.GetParentPath(path)
-	univ := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default univalue wrapper
+	univ := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default cell wrapper
 	if this.IfExists(parentPath) || tx == stgcommon.SYSTEM {      // The parent path exists or to inject the path directly
 		var err error
 		var inCache bool
 
 		// Not a special expression, just a value update.
 		if !strings.HasSuffix(path, "*") && !strings.HasSuffix(path, "[:]") {
-			_, univ, inCache = this.FindForWrite(tx, path, value, this.AddToDict) // Get a univalue wrapper
+			_, univ, inCache = this.FindForWrite(tx, path, value, this.AddToDict) // Get a cell wrapper
 			err = univ.Set(tx, path, value, inCache, this)                        // set the new value
 		}
 
@@ -186,7 +187,7 @@ func (this *StateCache) write(tx uint64, path string, value any) (*statecell.Sta
 // Users need to count access themselves.
 func (this *StateCache) Retrieve(path string, T any) (any, error) {
 	typedv, _, _ := this.FindForRead(stgcommon.SYSTEM, path, T, nil)
-	if typedv == nil || typedv.(stgcommon.Type).IsDeltaApplied() {
+	if typedv == nil || typedv.(crdtcommon.Type).IsDeltaApplied() {
 		return typedv, nil
 	}
 
@@ -199,9 +200,9 @@ func (this *StateCache) Retrieve(path string, T any) (any, error) {
 	}
 
 	// Make a Deep copy of the original value.
-	rawv, _, _ := typedv.(stgcommon.Type).Get()
-	min, max := typedv.(stgcommon.Type).Limits()
-	return typedv.(stgcommon.Type).New(rawv, nil, nil, min, max), nil // Clone the value
+	rawv, _, _ := typedv.(crdtcommon.Type).Get()
+	min, max := typedv.(crdtcommon.Type).Limits()
+	return typedv.(crdtcommon.Type).New(rawv, nil, nil, min, max), nil // Clone the value
 }
 
 // The load the data from the backend. Since the state is already isCommitted, it is read-only.
@@ -223,12 +224,12 @@ func (this *StateCache) ReadStorage(key string, T any) (any, error) {
 }
 
 func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
-	_, stcell, _ := this.FindForRead(tx, path, T, this.AddToDict) // Get the univalue wrapper
+	_, stcell, _ := this.FindForRead(tx, path, T, this.AddToDict) // Get the cell wrapper
 
 	// need to check if it is in the memory. If so gas price should be 3 instead.
 	dataSize := stgcommon.MIN_READ_SIZE
 	if typedv := stcell.Value(); typedv != nil {
-		dataSize = typedv.(stgcommon.Type).MemSize()
+		dataSize = typedv.(crdtcommon.Type).MemSize()
 	}
 	return stcell.Get(tx, path, nil), stcell, dataSize
 }
@@ -236,18 +237,18 @@ func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
 func (this *StateCache) DiffSize(tx uint64, path string, newVal any) int64 {
 	oldSize := int64(0)
 	if oldVal, _, _ := this.FindForRead(tx, path, newVal, nil); oldVal != nil {
-		oldSize += int64(oldVal.(stgcommon.Type).MemSize())
+		oldSize += int64(oldVal.(crdtcommon.Type).MemSize())
 	}
 
 	newSize := int64(0)
 	if newVal != nil {
-		newSize = int64(newVal.(stgcommon.Type).MemSize())
+		newSize = int64(newVal.(crdtcommon.Type).MemSize())
 	}
 
 	return newSize - oldSize
 }
 
-// Get the raw value directly, skip the access counting at the univalue level
+// Get the raw value directly, skip the access counting at the cell level
 func (this *StateCache) GetIfCached(path string) (any, bool) {
 	univ, ok := this.kvDict[path]
 	return univ, ok
@@ -343,7 +344,7 @@ func (this *StateCache) Equal(other *StateCache) bool {
 	return cacheFlag
 }
 
-// Export the content of the writecache to two arrays of univalues.
+// Export the content of the writecache to two arrays of cells.
 // One for the accesses and the other for the transitions.
 func (this *StateCache) Export(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) []*statecell.StateCell {
 	buffer := mapi.Values(this.kvDict)
@@ -357,11 +358,11 @@ func (this *StateCache) Export(preprocs ...func([]*statecell.StateCell) []*state
 	})
 
 	// statecell.StateCell(buffer).PrintUnsorted() // For debugging purpose
-	buffer = append(buffer, this.WildcardsToUnivalue()...)
+	buffer = append(buffer, this.WildcardsToStateCell()...)
 	return buffer
 }
 
-// For the testing purpose, export the content of the writecache to two arrays of univalues and filter.
+// For the testing purpose, export the content of the writecache to two arrays of cells and filter.
 func (this *StateCache) ExportAll(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) ([]*statecell.StateCell, []*statecell.StateCell) {
 	all := this.Export()
 	accesses := statecell.StateCells(slice.Clone(all)).To(statecell.ITAccess{})
@@ -369,12 +370,12 @@ func (this *StateCache) ExportAll(preprocs ...func([]*statecell.StateCell) []*st
 	return accesses, transitions
 }
 
-func (this *StateCache) KVs() ([]string, []stgcommon.Type) {
+func (this *StateCache) KVs() ([]string, []crdtcommon.Type) {
 	transitions := statecell.StateCells(slice.Clone(this.Export(statecell.Sorter))).To(statecell.ITTransition{})
 
-	values := make([]stgcommon.Type, len(transitions))
+	values := make([]crdtcommon.Type, len(transitions))
 	keys := slice.ParallelTransform(transitions, 4, func(i int, v *statecell.StateCell) string {
-		values[i] = v.Value().(stgcommon.Type)
+		values[i] = v.Value().(crdtcommon.Type)
 		return *v.GetPath()
 	})
 	return keys, values

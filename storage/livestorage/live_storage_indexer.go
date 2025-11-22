@@ -20,8 +20,8 @@ package ccstorage
 import (
 	"runtime"
 
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/slice"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
 	// intf "github.com/arcology-network/state-engine/interfaces"
 )
 

@@ -26,10 +26,11 @@ import (
 	"math"
 
 	common "github.com/arcology-network/common-lib/common"
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	"github.com/arcology-network/common-lib/crdt/commutative"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	softdeltaset "github.com/arcology-network/common-lib/exp/softdeltaset"
 	stgcommon "github.com/arcology-network/state-engine/common"
-	"github.com/arcology-network/state-engine/type/commutative"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 /*
@@ -82,8 +83,8 @@ func (this *StateCache) KeyAt(tx uint64, path string, index any, T any) (string,
 // Peek the value under a path. The difference between Peek and Read is that Peek does not have access metadata attached.
 func (this *StateCache) Peek(path string, T any) (any, any, uint64) {
 	if v, _, _ := this.FindForRead(stgcommon.SYSTEM, path, T, nil); v != nil {
-		originalV, _, _ := v.(stgcommon.Type).Get()
-		return originalV, v, v.(stgcommon.Type).MemSize()
+		originalV, _, _ := v.(crdtcommon.Type).Get()
+		return originalV, v, v.(crdtcommon.Type).MemSize()
 	}
 	return nil, nil, stgcommon.MIN_READ_SIZE
 }

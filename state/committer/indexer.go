@@ -21,10 +21,10 @@ import (
 
 	indexer "github.com/arcology-network/common-lib/storage/indexer"
 
-	stgcommon "github.com/arcology-network/state-engine/common"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 
 	// interfaces "github.com/arcology-network/state-engine/interfaces"
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	interfaces "github.com/arcology-network/state-engine/common"
 )
 
@@ -43,7 +43,7 @@ func PathIndexer(store interfaces.ReadOnlyStore) *indexer.UnorderedIndexer[strin
 		// The function to update the value when it exists.
 		func(k string, v *statecell.StateCell) []*statecell.StateCell {
 			if v.Value() != nil {
-				v.Value().(stgcommon.Type).Preload(k, store)
+				v.Value().(crdtcommon.Type).Preload(k, store)
 			}
 			return []*statecell.StateCell{v}
 		},

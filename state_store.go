@@ -23,9 +23,9 @@ import (
 	stgcommon "github.com/arcology-network/state-engine/common"
 	committer "github.com/arcology-network/state-engine/state/committer"
 
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	cache "github.com/arcology-network/state-engine/state/cache"
 	proxy "github.com/arcology-network/state-engine/storage/proxy"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
 	"github.com/cespare/xxhash/v2"
 )
 

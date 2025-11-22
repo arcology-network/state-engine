@@ -23,11 +23,11 @@ import (
 	"sync/atomic"
 
 	"github.com/arcology-network/common-lib/common"
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/associative"
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
-	stgcommon "github.com/arcology-network/state-engine/common"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 type Profile struct {
@@ -77,7 +77,7 @@ func (this *CacheProfile) PrepareSpace(univals *[]*statecell.StateCell, liveCach
 		if v.Value() == nil {
 			return 0
 		}
-		return v.Value().(stgcommon.Type).MemSize()
+		return v.Value().(crdtcommon.Type).MemSize()
 	})
 
 	// The available memory to store the new values.
@@ -105,14 +105,14 @@ func (this *CacheProfile) PrepareSpace(univals *[]*statecell.StateCell, liveCach
 		// Some new values won't be stored in the cache. Sort the univalues by size in memory.
 		// So the smallest values will still have a chance to be stored.
 		sort.Slice(*univals, func(i, j int) bool {
-			return (*univals)[i].Value().(stgcommon.Type).MemSize() < (*univals)[j].Value().(stgcommon.Type).MemSize()
+			return (*univals)[i].Value().(crdtcommon.Type).MemSize() < (*univals)[j].Value().(crdtcommon.Type).MemSize()
 		})
 
 		// Find the index of the last value that can be stored in the cache.
 		idx := 0
 		accumSize := uint64(0) // Accumulated size of the values.
 		for i, v := range *univals {
-			if accumSize += v.Value().(stgcommon.Type).MemSize(); int(accumSize) > totalAvailable {
+			if accumSize += v.Value().(crdtcommon.Type).MemSize(); int(accumSize) > totalAvailable {
 				idx = i // Find out the last values that can be stored in the cache.
 				break
 			}
@@ -120,7 +120,7 @@ func (this *CacheProfile) PrepareSpace(univals *[]*statecell.StateCell, liveCach
 
 		// Accumulated size minus the last value's size which it isn't stored in the cache.
 		// Because it made the accumulated size exceed the available memory.
-		this.occupied = accumSize - (*univals)[idx].Value().(stgcommon.Type).MemSize()
+		this.occupied = accumSize - (*univals)[idx].Value().(crdtcommon.Type).MemSize()
 		*univals = (*univals)[:idx] // Some new values won't be stored in cache.
 		return
 	}
@@ -141,13 +141,13 @@ func (this *CacheProfile) freeCache(sizeToFree uint64) uint64 {
 	// Calculte the memory to free for each shard.
 	shardTarget := slice.New(len(shards), math.Ceil(float64(sizeToFree)/float64(len(shards)))) // The memory to free for each shard.
 
-	slice.ParallelForeach(shards, runtime.NumCPU(), func(i int, _ *map[string]*associative.Pair[stgcommon.Type, *Profile]) {
+	slice.ParallelForeach(shards, runtime.NumCPU(), func(i int, _ *map[string]*associative.Pair[crdtcommon.Type, *Profile]) {
 		if len(shards[i]) == 0 {
 			return
 		}
 
 		ks, v := mapi.KVs(shards[i])
-		scores := slice.ParallelTransform(v, runtime.NumCPU(), func(i int, v *associative.Pair[stgcommon.Type, *Profile]) float32 {
+		scores := slice.ParallelTransform(v, runtime.NumCPU(), func(i int, v *associative.Pair[crdtcommon.Type, *Profile]) float32 {
 			return float32(v.Second.visits) / float32(sizeToFree-uint64(v.Second.firstLoaded)) // The score of the value.
 		})
 
@@ -174,7 +174,7 @@ func (this *CacheProfile) freeCache(sizeToFree uint64) uint64 {
 	// 	}
 
 	// 	ks, v := common.MapKVs(shards[i])
-	// 	scores := slice.ParallelTransform(v, runtime.NumCPU(), func(i int, v *associative.Pair[stgcommon.Type, *Profile]) float32 {
+	// 	scores := slice.ParallelTransform(v, runtime.NumCPU(), func(i int, v *associative.Pair[crdtcommon.Type, *Profile]) float32 {
 	// 		return float32(v.Second.visits) / float32(sizeToFree-uint64(v.Second.firstLoaded)) // The score of the value.
 	// 	})
 

@@ -22,10 +22,10 @@ package cache
 import (
 	"runtime"
 
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	slice "github.com/arcology-network/common-lib/exp/slice"
 	intf "github.com/arcology-network/state-engine/common"
-	stgcommon "github.com/arcology-network/state-engine/common"
-	statecell "github.com/arcology-network/state-engine/type/statecell"
 )
 
 const (
@@ -125,8 +125,8 @@ func (this *ShardedStateCache) Equal(other *ShardedStateCache) bool {
 	return true
 }
 
-func (this *ShardedStateCache) KVs() ([][]string, [][]stgcommon.Type) {
-	keySet, valueSet := make([][]string, len(this.caches)), make([][]stgcommon.Type, len(this.caches))
+func (this *ShardedStateCache) KVs() ([][]string, [][]crdtcommon.Type) {
+	keySet, valueSet := make([][]string, len(this.caches)), make([][]crdtcommon.Type, len(this.caches))
 	for i := 0; i < len(this.caches); i++ {
 		keySet[i], valueSet[i] = this.caches[i].KVs()
 	}
