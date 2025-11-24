@@ -22,7 +22,7 @@ import (
 	"github.com/arcology-network/common-lib/exp/associative"
 	"github.com/arcology-network/common-lib/exp/slice"
 	"github.com/arcology-network/common-lib/storage/indexer"
-	platform "github.com/arcology-network/state-engine/common"
+	statecommon "github.com/arcology-network/state-engine/common"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
@@ -41,8 +41,8 @@ func NewEthIndexer(store *EthDataStore, Version int64, filter func(tran *statece
 	idxer := (indexer.NewUnorderedIndexer(
 		nil,
 		func(v *statecell.StateCell) ([20]byte, bool) {
-			addr, _ := hexutil.Decode(platform.GetAccountAddr(*v.GetPath()))
-			return ethcommon.BytesToAddress(addr), true //platform.IsEthPath(*v.GetPath())
+			addr, _ := hexutil.Decode(statecommon.GetAccountAddr(*v.GetPath()))
+			return ethcommon.BytesToAddress(addr), true
 		},
 
 		func(addr [20]byte, v *statecell.StateCell) *associative.Pair[*Account, []*statecell.StateCell] {
@@ -79,8 +79,8 @@ func (this *EthIndexer) Finalize() {
 	})
 
 	// Remove accounts that have no transitions left after cleanning up
-	pairs := this.UnorderedIndexer.Values()
-	slice.RemoveIf(&pairs, func(_ int, v *associative.Pair[*Account, []*statecell.StateCell]) bool { return len(v.Second) == 0 })
+	pairsByAccount := this.UnorderedIndexer.Values()
+	slice.RemoveIf(&pairsByAccount, func(_ int, v *associative.Pair[*Account, []*statecell.StateCell]) bool { return len(v.Second) == 0 })
 }
 
 // Merge indexers so they can be updated at once.

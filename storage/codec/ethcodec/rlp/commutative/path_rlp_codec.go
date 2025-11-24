@@ -1,5 +1,5 @@
 /*
- *   Copyright (c) 2025 Arcology Network
+ *   Copyright (c) 2023 Arcology Network
 
  *   This program is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -15,18 +15,24 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package ethstorage
+package commutativecodec
 
 import (
-	"github.com/ethereum/go-ethereum/ethdb"
-	// ethmpt "github.com/ethereum/go-ethereum/trie"
-	tridb "github.com/ethereum/go-ethereum/triedb"
+	"github.com/arcology-network/common-lib/crdt/commutative"
+	"github.com/ethereum/go-ethereum/rlp"
+	// performance "github.com/arcology-network/common-lib/mhasher"
 )
 
-// AccountStorage represents an Ethereum account with its associated
-// storage trie and underlying databases.
-type EthBackend struct {
-	ethdb        *tridb.Database
-	diskdbShards [16]ethdb.Database
-	err          error
+type Path struct{ commutative.Path }
+
+func (this *Path) Encode() ([]byte, error) {
+	return rlp.EncodeToBytes(this.Path.Encode())
+}
+
+func (this *Path) Decode(buffer []byte) any {
+	var decoded []byte
+	if err := rlp.DecodeBytes(buffer, &decoded); err != nil {
+		panic(err)
+	}
+	return this.Path.Decode(decoded)
 }

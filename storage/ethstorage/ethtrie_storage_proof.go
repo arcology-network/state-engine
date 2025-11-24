@@ -67,7 +67,7 @@ func (this *ProofProvider) GetProof(acctAddr ethcommon.Address, storageKeys []st
 	}
 
 	// Debugging only. Will panic if the proof is invalid.
-	// if data, _, err := account.IsStorageProvable(storageKeys[0]); err != nil || len(data) == 0 {
+	// if data, _, err := account.IsAccountStorageProvable(storageKeys[0]); err != nil || len(data) == 0 {
 	// 	panic(err)
 	// }
 
@@ -75,6 +75,7 @@ func (this *ProofProvider) GetProof(acctAddr ethcommon.Address, storageKeys []st
 	codeHash := account.GetCodeHash()
 
 	// Create the storage proof for each storage key.
+	var aggregatedErr error
 	storageProof := make([]StorageResult, len(storageKeys))
 	for i, hexKey := range storageKeys {
 		key, keyLength, err := decodeHash(hexKey)
@@ -114,7 +115,9 @@ func (this *ProofProvider) GetProof(acctAddr ethcommon.Address, storageKeys []st
 		v, _ := account.storageTrie.Get(storageKey)
 
 		decoded := []byte{}
-		rlp.DecodeBytes(v, &decoded)
+		if err := rlp.DecodeBytes(v, &decoded); err != nil {
+			aggregatedErr = errors.Join(aggregatedErr, err)
+		}
 		storageProof[i] = StorageResult{outputKey, (*hexutil.Big)(ethcommon.BytesToHash(decoded).Big()), proof}
 	}
 
@@ -147,12 +150,12 @@ func IsAccountProvable(addr string, acctRoot [32]byte, worldTrie *ethmpt.Trie) (
 			return nil, err
 		}
 	} else {
-		return nil, errors.New("Failed to find the proof")
+		return nil, errors.New("Failed to get the proof")
 	}
 
 	v, err := ethmpt.VerifyProof(acctRoot, keyHash, proofs)
 	if err != nil || len(v) == 0 {
-		return v, errors.New("Failed to find the proof")
+		return v, errors.New("Failed to verify the proof")
 	}
 	return v, nil
 }

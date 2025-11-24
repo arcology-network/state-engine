@@ -19,7 +19,6 @@ package common
 import (
 	"encoding/hex"
 	"errors"
-	"strings"
 
 	evmcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -76,30 +75,6 @@ func ParseAddressFromPath(path string) (evmcommon.Address, [4]byte, error) {
 	}
 	copy(Selector[:], selectorBytes)
 	return Address, Selector, nil
-}
-
-// GetParentPath returns the parent path of the given key.
-// If the key is empty or the root ("/"), it returns the key itself.
-// Otherwise, it returns the substring of the key up to the last occurrence of "/".
-func GetParentPath(key string) (string, string) {
-	if len(key) == 0 || key == "/" { //Root or empty
-		return key, key
-	}
-	path := key[:strings.LastIndex(key[:len(key)-1], "/")+1]
-	return path, key[len(path):]
-}
-
-// This function determines the type of path, either ACL or ETH based on the key.
-func (this *PathBuilder) GetPlatform(key string) uint8 {
-	if len(key) >= ETH_STORAGE_NATIVE_PREFIX_LENGTH {
-		k := key[ETH_STORAGE_PREFIX_LENGTH:ETH_STORAGE_NATIVE_PREFIX_LENGTH]
-		if k == "/native/" {
-			this.Platform = ETH_PATH
-		}
-	} else {
-		this.Platform = ARN_PATH
-	}
-	return this.Platform // Arcology paths
 }
 
 // Build the subpath under the callee profile.

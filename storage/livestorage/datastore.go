@@ -31,14 +31,14 @@ type LiveStorage struct {
 	db    commonintf.PersistentStorage
 	cache *cache.ReadCache[string, any]
 
-	encoder func(string, any) []byte
+	encoder func(string, any) ([]byte, error)
 	decoder func(string, []byte, any) any
 }
 
 // numShards uint64, isNil func(V) bool, hasher func(K) uint64, cachePolicy *policy.CachePolicy
 func NewLiveStorage(
 	db commonintf.PersistentStorage,
-	encoder func(string, any) []byte,
+	encoder func(string, any) ([]byte, error),
 	decoder func(string, []byte, any) any,
 ) *LiveStorage {
 	LiveStorage := &LiveStorage{
@@ -62,10 +62,10 @@ func NewLiveStorage(
 }
 
 // Placeholder only
-func (this *LiveStorage) Preload(data []byte) any                   { return nil }
-func (this *LiveStorage) Cache(any) any                             { return this.cache }
-func (this *LiveStorage) Encoder(any) func(string, any) []byte      { return this.encoder }
-func (this *LiveStorage) Decoder(any) func(string, []byte, any) any { return this.decoder }
+func (this *LiveStorage) Preload(data []byte) any                       { return nil }
+func (this *LiveStorage) Cache(any) any                                 { return this.cache }
+func (this *LiveStorage) Encoder(any) func(string, any) ([]byte, error) { return this.encoder }
+func (this *LiveStorage) Decoder(any) func(string, []byte, any) any     { return this.decoder }
 
 func (this *LiveStorage) GetDB() commonintf.PersistentStorage   { return this.db }
 func (this *LiveStorage) SetDB(db commonintf.PersistentStorage) { this.db = db }
@@ -81,7 +81,8 @@ func (this *LiveStorage) IfExists(key string) bool {
 // Inject directly to the local cache.
 func (this *LiveStorage) Inject(key string, v any) error {
 	this.cache.Set(key, v)
-	return this.db.BatchSet([]string{key}, [][]byte{this.encoder(key, v)})
+	encoded, _ := this.encoder(key, v)
+	return this.db.BatchSet([]string{key}, [][]byte{encoded})
 }
 
 // Inject directly to the local cache.
@@ -89,7 +90,7 @@ func (this *LiveStorage) BatchInject(keys []string, values []any) error {
 	this.cache.BatchSet(keys, values) // update the local cache
 	encoded := make([][]byte, len(keys))
 	for i := 0; i < len(keys); i++ {
-		encoded[i] = this.encoder(keys[i], values[i])
+		encoded[i], _ = this.encoder(keys[i], values[i])
 	}
 	return this.db.BatchSet(keys, encoded)
 }

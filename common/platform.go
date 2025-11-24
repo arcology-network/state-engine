@@ -35,16 +35,16 @@ type Platform struct {
 func NewPlatform() *Platform {
 	return &Platform{
 		map[string]uint8{
-			"/":        commutative.PATH,
-			"/code":    noncommutative.BYTES,
-			"/nonce":   commutative.UINT64,
-			"/balance": commutative.UINT256,
+			PATH_ROOT:    commutative.PATH,
+			PATH_CODE:    noncommutative.BYTES,
+			PATH_NONCE:   commutative.UINT64,
+			PATH_BALANCE: commutative.UINT256,
 
 			// Arcology specific paths
-			FUNC_PROFILE_PATH:     commutative.PATH,
-			"/storage/":           commutative.PATH,
-			"/storage/container/": commutative.PATH, // Container storage
-			"/storage/native/":    commutative.PATH, // Native storage
+			PATH_FUNC_PROFILE:      commutative.PATH,
+			PATH_STORAGE_ROOT:      commutative.PATH,
+			PATH_STORAGE_CONTAINER: commutative.PATH, // Container storage
+			PATH_STORAGE_NATIVE:    commutative.PATH, // Native ETH storage
 		},
 	}
 }
@@ -93,38 +93,4 @@ func (this *Platform) IsImmediateChildOfSysPath(path string) bool {
 		!strings.Contains(parent, "/") // All but the root has "/", root is also a system path.
 }
 
-// If the path of a concurrent container, it is a concurrent path.
-func (*Platform) IsContainerPath(path string) bool {
-	return strings.HasSuffix(path, "/container/")
-}
-
-func ParseAccountAddr(acct string) (string, string, string) {
-	if len(acct) < ETH_ACCOUNT_PREFIX_LENGTH+ETH_ACCOUNT_LENGTH {
-		return acct, "", ""
-	}
-	return acct[:ETH_ACCOUNT_PREFIX_LENGTH],
-		acct[ETH_ACCOUNT_PREFIX_LENGTH : ETH_ACCOUNT_PREFIX_LENGTH+ETH_ACCOUNT_LENGTH],
-		acct[ETH_ACCOUNT_PREFIX_LENGTH+ETH_ACCOUNT_LENGTH:]
-}
-
-func GetAccountAddr(acct string) string {
-	if len(acct) < ETH_ACCOUNT_PREFIX_LENGTH+ETH_ACCOUNT_LENGTH {
-		return acct
-	}
-	return acct[ETH_ACCOUNT_PREFIX_LENGTH : ETH_ACCOUNT_PREFIX_LENGTH+ETH_ACCOUNT_LENGTH]
-}
-
-func GetPathUnder(key, prefix string) string {
-	if len(key) > ETH_ACCOUNT_PREFIX_LENGTH+ETH_ACCOUNT_LENGTH {
-		subKey := key[ETH_ACCOUNT_PREFIX_LENGTH+ETH_ACCOUNT_LENGTH:]
-		if subKey != prefix && strings.HasPrefix(subKey, prefix) {
-			return subKey[len(prefix):]
-		}
-	}
-	return ""
-}
-
-// IsEthPath checks if the path is an eth path, some paths are not Arcology only.
-func IsEthPath(path string) bool {
-	return !strings.HasSuffix(path, "container/")
-}
+func (*Platform) IsContainerPath(path string) bool { return strings.HasSuffix(path, "/container/") }

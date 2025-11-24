@@ -84,7 +84,7 @@ func (this *LiveStgIndexer) Finalize() {
 	this.encodedBuffer = make([][]byte, len(this.valueBuffer))
 	for i := 0; i < len(this.valueBuffer); i++ {
 		if this.valueBuffer[i] != nil {
-			this.encodedBuffer[i] = this.liveStg.encoder(this.keyBuffer[i], this.valueBuffer[i])
+			this.encodedBuffer[i], _ = this.liveStg.encoder(this.keyBuffer[i], this.valueBuffer[i])
 		}
 	}
 }

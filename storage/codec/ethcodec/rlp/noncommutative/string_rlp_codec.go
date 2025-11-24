@@ -1,5 +1,5 @@
 /*
- *   Copyright (c) 2023 Arcology Network
+ *   Copyright (c) 2024 Arcology Network
 
  *   This program is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -15,25 +15,24 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package commutativecodec
+package noncommutativecodec
 
 import (
-	"github.com/arcology-network/common-lib/crdt/commutative"
+	noncommutative "github.com/arcology-network/common-lib/crdt/noncommutative"
 	"github.com/ethereum/go-ethereum/rlp"
-	// performance "github.com/arcology-network/common-lib/mhasher"
 )
 
-type Path struct{ commutative.Path }
+type String struct{ noncommutative.String }
 
-func (this *Path) Encode() []byte {
-	buffer, _ := rlp.EncodeToBytes(this.Path.Encode())
-	return buffer
+func (this *String) Encode() ([]byte, error) {
+	buffer, err := rlp.EncodeToBytes(this.String)
+	return buffer, err
 }
 
-func (this *Path) Decode(buffer []byte) any {
-	var decoded []byte
-	if err := rlp.DecodeBytes(buffer, &decoded); err != nil {
-		panic(err)
+func (this *String) Decode(buffer []byte) any {
+	var v String
+	if err := rlp.DecodeBytes(buffer, &v); err != nil {
+		panic("Failed to decode string")
 	}
-	return this.Path.Decode(decoded)
+	return &v.String
 }

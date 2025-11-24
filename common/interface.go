@@ -21,52 +21,6 @@ import (
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 )
 
-// type Type interface { // value type
-// 	TypeID() uint8
-// 	Equal(any) bool
-// 	Clone() any
-
-// 	IsNumeric() bool
-// 	IsCommutative() bool // If the type is commutative, the order of the operands does not matter.
-
-// 	Value() any // Get() - read/write count
-// 	Delta() (any, bool)
-
-// 	Limits() (any, any) // Get the limits of the type, if applicable.
-// 	IsDeltaApplied() bool
-
-// 	// Delta replication methods
-// 	New(any, any, any, any, any) any
-// 	CloneDelta() (any, bool)
-// 	SetDelta(any, bool)
-// 	SetValue(v any)
-// 	GetCascadeSub(string, any) []string // Get the sub paths for cascade delete, if applicable.
-
-// 	Get() (any, uint32, uint32) // Value, reads and writes, no deltawrites.
-// 	Set(any, any) (any, uint32, uint32, uint32, error)
-// 	CopyTo(any) (any, uint32, uint32, uint32) // Only a function to generate the right access counts, when assigning the value.
-// 	ApplyDelta([]Type) (Type, int, error)
-// 	IsDeletable(any, any) bool
-
-// 	MemSize() uint64 // Size in memory
-
-// 	// Encoding methods
-// 	Size() uint64 // Encoded size
-// 	Encode() []byte
-// 	EncodeTo([]byte) int
-// 	Decode([]byte) any
-
-// 	// Storage encoding related methods
-// 	// StorageEncode(string) []byte
-// 	// StorageDecode(string, []byte) any
-// 	Preload(string, any)
-
-// 	// Auxiliary methods
-// 	Hash() [32]byte
-// 	ShortHash() (uint64, bool) // For fast comparison only.
-// 	Print()
-// }
-
 type Writer[T any] interface {
 	Import([]T)
 	Precommit(bool)

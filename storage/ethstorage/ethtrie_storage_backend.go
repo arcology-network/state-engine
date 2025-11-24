@@ -1,5 +1,5 @@
 /*
- *   Copyright (c) 2024 Arcology Network
+ *   Copyright (c) 2025 Arcology Network
 
  *   This program is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -15,23 +15,18 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package noncommutativecodec
+package ethstorage
 
 import (
-	noncommutative "github.com/arcology-network/common-lib/crdt/noncommutative"
-	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/ethdb"
+	// ethmpt "github.com/ethereum/go-ethereum/trie"
+	tridb "github.com/ethereum/go-ethereum/triedb"
 )
 
-type String struct{ noncommutative.String }
-
-func (this *String) Encode() ([]byte, error) {
-	return rlp.EncodeToBytes(*this)
-}
-
-func (this *String) Decode(buffer []byte) any {
-	var v String
-	if err := rlp.DecodeBytes(buffer, &v); err != nil {
-		panic("Failed to decode string")
-	}
-	return &v.String
+// EthStroageBackend represents an Ethereum account with its associated
+// storage trie and underlying databases.
+type EthStroageBackend struct {
+	ethdb        *tridb.Database
+	diskdbShards [16]ethdb.Database
+	err          error
 }

@@ -173,7 +173,9 @@ func (this *StateCache) write(tx uint64, path string, value any) (*statecell.Sta
 				err = parentMeta.Set(tx, path, univ.Value(), inCache, this)
 			}
 
-			//Set Transient Status based on its parent path settings.
+			// Set Transient Status based on its parent path settings. A transient path will not be persisted after
+			// the a generation or a block is committed. This makes it different from either a normal state updates or
+			// a memory variable.
 			if pathMeta, _, _ := this.FindForRead(tx, parentPath, new(commutative.Path), nil); pathMeta != nil { // Get the parent path meta
 				univ.SetBlockBound(pathMeta.(*commutative.Path).IsBlockBound()) // Use the parent path transient status to set the current path
 			}

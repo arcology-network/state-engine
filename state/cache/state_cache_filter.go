@@ -27,7 +27,6 @@ import (
 
 // StateCacheFilter is a post processing filter for StateCache.
 // It is used to filter out the transitions based on the addresses.
-// out the transitions based on the addresses.
 type StateCacheFilter struct {
 	*StateCache
 	ignoreAddresses map[string]bool

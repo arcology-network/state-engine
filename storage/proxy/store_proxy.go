@@ -20,20 +20,19 @@ package proxy
 import (
 	"math"
 
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	"github.com/arcology-network/common-lib/crdt/commutative"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	ccbadger "github.com/arcology-network/common-lib/storage/badger"
 	memdb "github.com/arcology-network/common-lib/storage/memdb"
-
-	// intf "github.com/arcology-network/state-engine/interfaces"
-	intf "github.com/arcology-network/state-engine/common"
-
 	statecommon "github.com/arcology-network/state-engine/common"
 	"github.com/arcology-network/state-engine/storage/ethstorage"
 	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
 	livecache "github.com/arcology-network/state-engine/storage/livecache"
 	ccstorage "github.com/arcology-network/state-engine/storage/livestorage"
 	livestg "github.com/arcology-network/state-engine/storage/livestorage"
+
+	arcocodec "github.com/arcology-network/state-engine/storage/codec/arcocodec"
 )
 
 // StorageProxy is a proxy for the storage, it consists of multiple storages and caches.
@@ -60,8 +59,8 @@ func NewCacheOnlyStoreProxy() *StorageProxy {
 		ethStorage: ethstg.NewParallelEthMemDataStore(), //ethstg.NewParallelEthMemDataStore(),
 		execStorage: livestg.NewLiveStorage(
 			nil,
-			statecommon.Codec{}.Encode,
-			statecommon.Codec{}.Decode,
+			arcocodec.Codec{}.Encode,
+			arcocodec.Codec{}.Decode,
 		),
 	}
 
@@ -84,8 +83,8 @@ func NewLevelDBStoreProxy(dbpath string) *StorageProxy {
 			// memdb.NewMemoryDB(),
 			ccbadger.NewBadgerDB(dbpath+"_badager"),
 			// ccbadger.NewParaBadgerDB(dbpath+"_pbadager", common.Remainder),
-			statecommon.Codec{}.Encode,
-			statecommon.Codec{}.Decode,
+			arcocodec.Codec{}.Encode,
+			arcocodec.Codec{}.Decode,
 		),
 	}
 	// proxy.execCache = livecache.NewLiveCache(math.MaxUint64)
@@ -144,8 +143,8 @@ func (this *StorageProxy) Inject(key string, v any) error {
 }
 
 // Get the stores that can be
-func (this *StorageProxy) GetWriters() []intf.Writer[*statecell.StateCell] {
-	return []intf.Writer[*statecell.StateCell]{
+func (this *StorageProxy) GetWriters() []statecommon.Writer[*statecell.StateCell] {
+	return []statecommon.Writer[*statecell.StateCell]{
 		livecache.NewLiveCacheWriter(this.execCache, -1, this.RemoveTransients),
 		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.EthOnly),
 		ccstorage.NewLiveStorageWriter(this.execStorage, -1, this.RemoveTransients),
@@ -153,14 +152,14 @@ func (this *StorageProxy) GetWriters() []intf.Writer[*statecell.StateCell] {
 }
 
 // Get the stores that can be
-func (this *StorageProxy) SyncWriters() []intf.Writer[*statecell.StateCell] {
-	return []intf.Writer[*statecell.StateCell]{
+func (this *StorageProxy) SyncWriters() []statecommon.Writer[*statecell.StateCell] {
+	return []statecommon.Writer[*statecell.StateCell]{
 		livecache.NewLiveCacheWriter(this.execCache, -1, this.RemoveTransients),
 	}
 }
 
-func (this *StorageProxy) AsyncWriters() []intf.Writer[*statecell.StateCell] {
-	return []intf.Writer[*statecell.StateCell]{
+func (this *StorageProxy) AsyncWriters() []statecommon.Writer[*statecell.StateCell] {
+	return []statecommon.Writer[*statecell.StateCell]{
 		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.EthOnly),
 		ccstorage.NewLiveStorageWriter(this.execStorage, -1, this.RemoveTransients),
 	}
@@ -169,7 +168,7 @@ func (this *StorageProxy) AsyncWriters() []intf.Writer[*statecell.StateCell] {
 // Filter out the transitions that are not needed to be persisted.
 func (this *StorageProxy) RemoveTransients(tran *statecell.StateCell) bool {
 	// System paths only get reset if they are transient.
-	if v := (*tran).Value(); v != nil && v.(intf.Type).TypeID() == commutative.PATH && v.(*commutative.Path).IsBlockBound() && this.platform.IsSysPath(*(*tran).GetPath()) {
+	if v := (*tran).Value(); v != nil && v.(crdtcommon.Type).TypeID() == commutative.PATH && v.(*commutative.Path).IsBlockBound() && this.platform.IsSysPath(*(*tran).GetPath()) {
 		v.(*commutative.Path).Reset()
 	}
 
@@ -179,5 +178,5 @@ func (this *StorageProxy) RemoveTransients(tran *statecell.StateCell) bool {
 
 // Filter out the transitions that are not needed to be persisted.
 func (this *StorageProxy) EthOnly(tran *statecell.StateCell) bool {
-	return statecommon.IsEthPath(*tran.GetPath())
+	return statecommon.ShouldPersistToEth(*tran.GetPath())
 }

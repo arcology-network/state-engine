@@ -22,45 +22,37 @@ import (
 
 	"github.com/arcology-network/common-lib/crdt/commutative"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/holiman/uint256"
 )
 
-type U256 struct{ commutative.U256 }
+type Uint64 struct{ commutative.Uint64 }
 
-func (this *U256) StorageEncode(_ string) []byte {
-	var buffer []byte
+func (this *Uint64) Encode() ([]byte, error) {
 	if this.HasLimits() {
 		min, max := this.Limits()
-		buffer, _ = rlp.EncodeToBytes([]any{this.Value(), min, max})
-	} else {
-		v := this.U256.Value().(uint256.Int)
-		buffer, _ = rlp.EncodeToBytes(v.ToBig())
+		v := []*big.Int{new(big.Int).SetUint64(this.Value().(uint64)), new(big.Int).SetUint64(min.(uint64)), new(big.Int).SetUint64(max.(uint64))}
+		return rlp.EncodeToBytes(v)
 	}
-	return buffer
+	return rlp.EncodeToBytes(this.Value())
 }
 
-func (*U256) StorageDecode(_ string, buffer []byte) any {
-	this := commutative.NewUnboundedU256().(*U256)
+func (*Uint64) Decode(buffer []byte) any {
+	this := commutative.NewUnboundedUint64().(*commutative.Uint64)
 
-	var arr []any
+	arr := make([]*big.Int, 3)
 	err := rlp.DecodeBytes(buffer, &arr)
+
+	// It can be encoded directly to save space, or with limits
+	// So when error occurs, we try to decode as a single value, because
+	// the error is likely due to that.
 	if err != nil {
-		var v2 big.Int
-		if err = rlp.DecodeBytes(buffer, &v2); err == nil {
-			// this.value.SetFromBig(&v2)
-			v := this.Value().(uint256.Int)
-			v.SetFromBig(&v2)
+		var value big.Int
+		if err = rlp.DecodeBytes(buffer, &value); err == nil {
+			this.SetValue(value.Uint64())
 		}
 	} else {
-		min, max := uint256.NewInt(0), uint256.NewInt(0)
-		min.SetFromBig(arr[1].(*big.Int))
-		max.SetFromBig(arr[2].(*big.Int))
-
-		commutative.NewBoundedU256(min, max)
-		v := this.Value().(uint256.Int)
-		v.SetBytes(arr[0].([]byte))
-		// this.min.SetBytes(arr[1].([]byte))
-		// this.max.SetBytes(arr[2].([]byte))
+		min, max := arr[1].Uint64(), arr[2].Uint64()
+		this = commutative.NewBoundedUint64(min, max).(*commutative.Uint64)
+		this.SetValue(arr[0].Uint64())
 	}
 	return this
 }

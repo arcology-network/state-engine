@@ -29,6 +29,7 @@ import (
 	"github.com/arcology-network/common-lib/exp/slice"
 	platform "github.com/arcology-network/state-engine/common"
 	statecommon "github.com/arcology-network/state-engine/common"
+	ethrlp "github.com/arcology-network/state-engine/storage/codec/ethcodec/rlp"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -53,14 +54,13 @@ type EthDataStore struct {
 
 	ethdb   *triedb.Database
 	diskdbs [16]ethdb.Database
+	dbErr   error
 
 	lock     sync.RWMutex
 	rootDict map[uint64][32]byte // lookup the root hash for a block number
 
 	encoder func(string, any) ([]byte, error)
 	decoder func(string, []byte, any) any
-
-	dbErr error
 
 	trieDbConfig *hashdb.Config   // The config for the hash db underlying the trie.
 	encodedCache *fastcache.Cache // A shared cache holding the encoded account states to be used by different instances of the Eth Database
@@ -91,8 +91,8 @@ func NewEthDataStore(trie *ethmpt.Trie, trieDB *triedb.Database, diskdb [16]ethd
 		encodedCache:   fastcache.New(trieDbConfig.CleanCacheSize),
 		accountCache:   map[ethcommon.Address]*Account{},
 		worldStateTrie: trie,
-		encoder:        Rlp{}.Encode,
-		decoder:        Rlp{}.Decode,
+		encoder:        ethrlp.RlpCodec{}.Encode,
+		decoder:        ethrlp.RlpCodec{}.Decode,
 	}
 }
 
@@ -298,7 +298,7 @@ func (this *EthDataStore) LatestWorldTrieRoot() [32]byte {
 	return this.worldStateTrie.Hash() // Store the root hash for the block
 }
 
-func (this *EthDataStore) WriteToEthStorage(blockNum uint64, dirtyAccounts []*Account) {
+func (this *EthDataStore) ShouldPersistToEth(blockNum uint64, dirtyAccounts []*Account) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 

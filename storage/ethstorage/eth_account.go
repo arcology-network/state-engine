@@ -34,7 +34,7 @@ import (
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecommon "github.com/arcology-network/state-engine/common"
 
-	platform "github.com/arcology-network/state-engine/common"
+	ethrlp "github.com/arcology-network/state-engine/storage/codec/ethcodec/rlp"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -137,7 +137,7 @@ func (this *Account) GetCodeHash() [32]byte {
 
 // The function is used to prove the storage of an account. It only works with
 // NATIVE storage for now.
-func (this *Account) IsStorageProvable(key string) ([]byte, []string, error) {
+func (this *Account) IsAccountStorageProvable(key string) ([]byte, []string, error) {
 	decoded, _, _ := decodeHash(key)
 	keyBytes := crypto.Keccak256(decoded[:])
 	data, err := this.storageTrie.Get(keyBytes) // Get the storage value
@@ -148,7 +148,7 @@ func (this *Account) IsStorageProvable(key string) ([]byte, []string, error) {
 			return nil, proofs, err
 		}
 	} else {
-		return nil, proofs, errors.New("Failed to find the proof")
+		return nil, proofs, errors.New("Failed to find the proof for storage key: " + key)
 	}
 
 	proofdb, err := ProofArrayToDB(proofs)
@@ -173,7 +173,7 @@ func (this *Account) DB(key string) ethdb.Database {
 // The function parses the key in a forward slash separated format into a hex
 // string that can be accepted by the storage trie.
 func (this *Account) ToStorageKey(key string) string {
-	if k := platform.GetPathUnder(key, "/storage/native/"); len(k) > 0 {
+	if k := statecommon.GetPathUnder(key, "/storage/native/"); len(k) > 0 {
 		kstr, err := hexutil.Decode(k) // For native storage, the key is hex encoded.
 		if err != nil {
 			panic(err)
@@ -185,44 +185,45 @@ func (this *Account) ToStorageKey(key string) string {
 	return string(this.Hash([]byte(key))) // For non-native storage, the key is the hash of the key with prefix.
 }
 
-func (this *Account) Has(key string) bool {
-	if strings.HasSuffix(key, "/balance") || strings.HasSuffix(key, "/nonce") {
+func (this *Account) Has(path string) bool {
+	if strings.HasSuffix(path, statecommon.PATH_BALANCE) ||
+		strings.HasSuffix(path, statecommon.PATH_NONCE) {
 		return true
 	}
 
-	if strings.HasSuffix(key, "/code") {
+	if strings.HasSuffix(path, statecommon.PATH_CODE) {
 		return len(this.code) > 0
 	}
 
-	buffer, _ := this.storageTrie.Get([]byte(this.ToStorageKey(key)))
+	buffer, _ := this.storageTrie.Get([]byte(this.ToStorageKey(path)))
 	return len(buffer) > 0
 }
 
-func (this *Account) Retrieve(key string, T any) (interface{}, error) {
-	if strings.HasSuffix(key, "/balance") {
+func (this *Account) Retrieve(path string, T any) (interface{}, error) {
+	if strings.HasSuffix(path, statecommon.PATH_BALANCE) {
 		balance, _ := uint256.FromBig(this.StateAccount.Balance.ToBig())
 		v := commutative.NewUnboundedU256()
 		v.SetValue(*balance)
 		return v, nil
 	}
 
-	if strings.HasSuffix(key, "/nonce") {
+	if strings.HasSuffix(path, statecommon.PATH_NONCE) {
 		v := commutative.NewUnboundedUint64()
 		v.SetValue(this.StateAccount.Nonce)
 		return v, nil
 	}
 
-	if strings.HasSuffix(key, "/code") {
+	if strings.HasSuffix(path, statecommon.PATH_CODE) {
 		var err error
 		if this.code == nil {
-			if this.code, err = this.DB(key).Get(this.CodeHash); err != nil {
+			if this.code, err = this.DB(path).Get(this.CodeHash); err != nil {
 				return nil, err
 			}
 		}
 		return noncommutative.NewBytes(this.code), nil
 	}
 
-	k := this.ToStorageKey(key)
+	k := this.ToStorageKey(path)
 	buffer, err := this.storageTrie.Get([]byte(k))
 	if len(buffer) == 0 {
 		return nil, nil
@@ -232,30 +233,42 @@ func (this *Account) Retrieve(key string, T any) (interface{}, error) {
 		return T, nil
 	}
 
-	return Rlp{}.Decode(key, buffer, T), err
+	return ethrlp.RlpCodec{}.Decode(path, buffer, T), err
 	// return T.(crdtcommon.Type).StorageDecode(key, buffer), err
 }
 
-func (this *Account) UpdateAccountTrie(keys []string, typedVals []crdtcommon.Type) error {
-	if pos, _ := slice.FindFirstIf(keys, func(_ int, k string) bool { return len(k) == statecommon.ETH_ACCOUNT_FULL_LENGTH+1 }); pos >= 0 {
+// Update the account's storage trie with the given keys and values.
+func (this *Account) UpdateAccountStorageTrie(keys []string, typedVals []crdtcommon.Type) error {
+	if pos, _ := slice.FindFirstIf(keys,
+		func(_ int, k string) bool {
+			return len(k) == statecommon.ETH_ACCOUNT_FULL_LENGTH+1
+		}); pos >= 0 {
 		slice.RemoveAt(&keys, pos)
 		slice.RemoveAt(&typedVals, pos)
 	}
 
-	if pos, _ := slice.FindFirstIf(keys, func(_ int, k string) bool { return strings.HasSuffix(k, "/nonce") }); pos >= 0 {
+	if pos, _ := slice.FindFirstIf(keys,
+		func(_ int, k string) bool {
+			return strings.HasSuffix(k, statecommon.PATH_NONCE)
+		}); pos >= 0 {
 		this.Nonce = typedVals[pos].Value().(uint64)
 		slice.RemoveAt(&keys, pos)
 		slice.RemoveAt(&typedVals, pos)
 	}
 
-	if pos, _ := slice.FindFirstIf(keys, func(_ int, k string) bool { return strings.HasSuffix(k, "/balance") }); pos >= 0 {
+	if pos, _ := slice.FindFirstIf(keys,
+		func(_ int, k string) bool {
+			return strings.HasSuffix(k, statecommon.PATH_BALANCE)
+		}); pos >= 0 {
 		balance := typedVals[pos].Value().(uint256.Int)
 		this.Balance = balance.Clone()
 		slice.RemoveAt(&keys, pos)
 		slice.RemoveAt(&typedVals, pos)
 	}
 
-	if pos, _ := slice.FindFirstIf(keys, func(_ int, k string) bool { return strings.HasSuffix(k, "/code") }); pos >= 0 {
+	if pos, _ := slice.FindFirstIf(keys, func(_ int, k string) bool {
+		return strings.HasSuffix(k, statecommon.PATH_CODE)
+	}); pos >= 0 {
 		this.code = typedVals[pos].Value().(codec.Bytes)
 		this.StateAccount.CodeHash = this.Hash(this.code)
 		if err := this.DB(keys[pos]).Put(this.CodeHash, this.code); err != nil { // Save to DB directly, only for code
@@ -276,7 +289,7 @@ func (this *Account) UpdateAccountTrie(keys []string, typedVals []crdtcommon.Typ
 	encodedVals := slice.ParallelTransform(typedVals, numThd, func(i int, _ crdtcommon.Type) []byte {
 		return common.IfThenDo1st(typedVals[i] != nil, func() []byte {
 			// return typedVals[i].StorageEncode(keys[i])
-			v, _ := Rlp{}.Encode(keys[i], typedVals[i])
+			v, _ := ethrlp.RlpCodec{}.Encode(keys[i], typedVals[i])
 			return v
 		}, []byte{})
 	})
@@ -304,7 +317,7 @@ func (this *Account) ApplyChanges(transitions [][]*statecell.StateCell, getter f
 		return v
 	})
 
-	this.err = this.UpdateAccountTrie(keys, typedVals)
+	this.err = this.UpdateAccountStorageTrie(keys, typedVals)
 	return keys, typedVals, this.err
 }
 

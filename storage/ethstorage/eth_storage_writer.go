@@ -47,8 +47,8 @@ func (this *EthStorageWriter) Precommit(isSync bool) {
 	this.EthIndexer.Finalize() // Remove the nil transitions
 	this.buffer = append(this.buffer, this.EthIndexer)
 
-	pairs := this.EthIndexer.UnorderedIndexer.Values()                                                    // Export all the pairs to be written to the db
-	this.EthIndexer.dirtyAccounts = (associative.Pairs[*Account, []*statecell.StateCell])(pairs).Firsts() // Get the accounts.
+	accounts := this.EthIndexer.UnorderedIndexer.Values()                                                    // Export all the pairs to be written to the db
+	this.EthIndexer.dirtyAccounts = (associative.Pairs[*Account, []*statecell.StateCell])(accounts).Firsts() // Get the accounts.
 
 	// Account cache holds the accounts that are being updated in the current block.
 	// TODO: Need to check if this is necessary or could be moved to the import phase instead.
@@ -56,13 +56,13 @@ func (this *EthStorageWriter) Precommit(isSync bool) {
 		this.ethStore.accountCache[(**pair).Address()] = (*pair) // Add the account to the cache
 	})
 
-	slice.ParallelForeach(pairs, runtime.NumCPU(), func(i int, acctTrans **associative.Pair[*Account, []*statecell.StateCell]) {
+	slice.ParallelForeach(accounts, runtime.NumCPU(), func(i int, acctTrans **associative.Pair[*Account, []*statecell.StateCell]) {
 		if len((*acctTrans).Second) == 0 {
 			return // All removed
 		}
 
-		keys, vals := statecell.StateCells((*acctTrans).Second).KVs()         // Get all transitions under the same account
-		err := this.EthIndexer.dirtyAccounts[i].UpdateAccountTrie(keys, vals) //
+		keys, vals := statecell.StateCells((*acctTrans).Second).KVs()                // Get all transitions under the same account
+		err := this.EthIndexer.dirtyAccounts[i].UpdateAccountStorageTrie(keys, vals) //
 		if err != nil {
 			this.ethStore.dbErr = errors.Join(this.ethStore.dbErr, err)
 		}
@@ -76,7 +76,7 @@ func (this *EthStorageWriter) Precommit(isSync bool) {
 // Signals a block is completed, time to write to the db.
 func (this *EthStorageWriter) Commit(version uint64) {
 	mergedIdxer := new(EthIndexer).Merge(this.buffer[:]) // Merge all the indexers together to commit to the db at once.
-	this.ethStore.WriteToEthStorage(uint64(mergedIdxer.Version), mergedIdxer.dirtyAccounts)
+	this.ethStore.ShouldPersistToEth(uint64(mergedIdxer.Version), mergedIdxer.dirtyAccounts)
 	this.buffer = this.buffer[:0]
 }
 
