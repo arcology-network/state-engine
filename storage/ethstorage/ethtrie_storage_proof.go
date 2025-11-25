@@ -34,7 +34,7 @@ type ProofProvider struct {
 	root        [32]byte
 	totalVisits uint64 // Total number of times all the merkle trees have been accessed since this Merkle tree is created.
 	visits      int    // Number of times this merkle Merkle has been accessed.
-	DataStore   *EthDataStore
+	DataStore   *EthWorldState
 	Ethdb       *tridb.Database
 }
 

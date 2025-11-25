@@ -37,7 +37,7 @@ type EthIndexer struct {
 	// err           error
 }
 
-func NewEthIndexer(store *EthDataStore, Version int64, filter func(tran *statecell.StateCell) bool) *EthIndexer {
+func NewEthIndexer(store *EthWorldState, Version int64, filter func(tran *statecell.StateCell) bool) *EthIndexer {
 	idxer := (indexer.NewUnorderedIndexer(
 		nil,
 		func(v *statecell.StateCell) ([20]byte, bool) {

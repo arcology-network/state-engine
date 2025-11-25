@@ -29,12 +29,12 @@ import (
 type EthStorageWriter struct {
 	*EthIndexer
 	buffer   []*EthIndexer
-	ethStore *EthDataStore
+	ethStore *EthWorldState
 	filter   func(*statecell.StateCell) bool // Filter function to select transitions to be indexed
 	Err      error
 }
 
-func NewEthStorageWriter(ethStore *EthDataStore, version int64, filter func(*statecell.StateCell) bool) *EthStorageWriter {
+func NewEthStorageWriter(ethStore *EthWorldState, version int64, filter func(*statecell.StateCell) bool) *EthStorageWriter {
 	return &EthStorageWriter{
 		EthIndexer: NewEthIndexer(ethStore, version, filter),
 		ethStore:   ethStore,

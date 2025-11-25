@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/arcology-network/common-lib/codec"
 	common "github.com/arcology-network/common-lib/common"
 	commutative "github.com/arcology-network/common-lib/crdt/commutative"
@@ -40,12 +39,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 	ethmpt "github.com/ethereum/go-ethereum/trie"
-	tridb "github.com/ethereum/go-ethereum/triedb"
-	"github.com/ethereum/go-ethereum/triedb/hashdb"
+	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 )
@@ -56,36 +53,32 @@ type Account struct {
 	ethtypes.StateAccount
 	code []byte
 
-	StorageDirty bool
-	storageTrie  *ethmpt.Trie // account storage trie
-	ethdb        *tridb.Database
-	diskdbShards [16]ethdb.Database
-	err          error
+	storageTrie *ethmpt.Trie // account storage trie
+	trieDirty   bool
+
+	err     error
+	backend *EthShardDB
 }
 
 // The diskdbs need to able to handle concurrent accesses themselve
-func NewAccount(addr ethcommon.Address, diskdbs [16]ethdb.Database, state types.StateAccount) *Account {
-	ethdb, trie, err := LoadTrie(diskdbs, state.Root)
+func NewAccount(addr ethcommon.Address, backend *EthShardDB, state types.StateAccount) *Account {
 	return &Account{
 		addr:         addr,
-		storageTrie:  trie,
-		StorageDirty: false,
-		ethdb:        ethdb,
-		diskdbShards: diskdbs,
+		trieDirty:    false,
+		backend:      backend,
 		StateAccount: state,
-		err:          err,
 	}
 }
 
 // The diskdbs need to able to handle concurrent accesses themselve
-func NewAccountWithSharedCache(addr ethcommon.Address, diskdbs [16]ethdb.Database, state types.StateAccount, dbConfig *hashdb.Config, sharedCache *fastcache.Cache) *Account {
-	ethdb, trie, err := LoadTrieWithSharedCache(diskdbs, state.Root, dbConfig, sharedCache)
+func NewAccountWithSharedCache(addr ethcommon.Address, backend *EthShardDB, state types.StateAccount) *Account {
+	trie, err := LoadTrie(backend.mainTrieDB, state.Root)
 	return &Account{
-		addr:         addr,
-		storageTrie:  trie,
-		StorageDirty: false,
-		ethdb:        ethdb,
-		diskdbShards: diskdbs,
+		addr:        addr,
+		storageTrie: trie,
+		trieDirty:   false,
+
+		backend:      backend,
 		StateAccount: state,
 		err:          err,
 	}
@@ -100,16 +93,10 @@ func EmptyAccountState() types.StateAccount {
 	}
 }
 
-func LoadTrie(diskdbs [16]ethdb.Database, root ethcommon.Hash) (*tridb.Database, *trie.Trie, error) {
-	ethdb := tridb.NewParallelDatabase(diskdbs, nil)
-	trie, err := ethmpt.NewParallel(ethmpt.TrieID(root), ethdb)
-	return ethdb, trie, err
-}
-
-func LoadTrieWithSharedCache(diskdbs [16]ethdb.Database, root ethcommon.Hash, dbConfig interface{}, sharedCache *fastcache.Cache) (*tridb.Database, *trie.Trie, error) {
-	ethdb := tridb.NewParallelDatabaseWithSharedCache(diskdbs, sharedCache, nil)
-	trie, err := ethmpt.NewParallel(ethmpt.TrieID(root), ethdb)
-	return ethdb, trie, err
+func LoadTrie(trieDb *triedb.Database, root ethcommon.Hash) (*trie.Trie, error) {
+	// ethdb := tridb.NewParallelDatabase(diskdbs, nil)
+	trie, err := ethmpt.NewParallel(ethmpt.TrieID(root), trieDb)
+	return trie, err
 }
 
 func (this *Account) GetState(key [32]byte) []byte {
@@ -163,13 +150,6 @@ func (this *Account) IsAccountStorageProvable(key string) ([]byte, []string, err
 	return data, proofs, nil
 }
 
-func (this *Account) DB(key string) ethdb.Database {
-	if len(key) == 0 {
-		return this.diskdbShards[0]
-	}
-	return this.diskdbShards[key[0]>>4]
-}
-
 // The function parses the key in a forward slash separated format into a hex
 // string that can be accepted by the storage trie.
 func (this *Account) ToStorageKey(key string) string {
@@ -216,7 +196,7 @@ func (this *Account) Retrieve(path string, T any) (interface{}, error) {
 	if strings.HasSuffix(path, statecommon.PATH_CODE) {
 		var err error
 		if this.code == nil {
-			if this.code, err = this.DB(path).Get(this.CodeHash); err != nil {
+			if this.code, err = this.backend.ShardFromKey(path).Get(this.CodeHash); err != nil {
 				return nil, err
 			}
 		}
@@ -271,13 +251,13 @@ func (this *Account) UpdateAccountStorageTrie(keys []string, typedVals []crdtcom
 	}); pos >= 0 {
 		this.code = typedVals[pos].Value().(codec.Bytes)
 		this.StateAccount.CodeHash = this.Hash(this.code)
-		if err := this.DB(keys[pos]).Put(this.CodeHash, this.code); err != nil { // Save to DB directly, only for code
+		if err := this.backend.ShardFromKey(keys[pos]).Put(this.CodeHash, this.code); err != nil { // Save to DB directly, only for code
 			return err // failed to save the code
 		}
 		slice.RemoveAt(&keys, pos)
 		slice.RemoveAt(&typedVals, pos)
 	}
-	this.StorageDirty = len(keys) > 0
+	this.trieDirty = len(keys) > 0
 
 	// Encode the keys
 	numThd := common.IfThen(len(keys) < 1024, 4, 8)
@@ -335,9 +315,9 @@ func (*Account) Decode(buffer []byte) *Account {
 // Write the DB
 func (this *Account) Commit(block uint64) error {
 	var err error
-	if this.StorageDirty {
-		this.storageTrie, err = commitToEthDB(this.storageTrie, this.ethdb, block) // Commit the change to the storage trie.
-		this.StorageDirty = false
+	if this.trieDirty {
+		this.storageTrie, err = this.backend.commitTrieToDB(this.storageTrie, block) // Commit the change to the storage trie.
+		this.trieDirty = false
 	}
 	return err // Write to DB
 }
@@ -354,8 +334,8 @@ func (this *Account) Print() {
 	PrintStateAccount(this.StateAccount)
 	fmt.Println("code: ", this.code)
 	fmt.Println("storageTrie: ", this.storageTrie)
-	fmt.Println("ethdb: ", this.ethdb)
-	fmt.Println("diskdbShards: ", this.diskdbShards)
+	// fmt.Println("ethdb: ", this.ethdb)
+	// fmt.Println("diskdbShards: ", this.diskdbShards)
 	fmt.Println("err: ", this.err)
 }
 

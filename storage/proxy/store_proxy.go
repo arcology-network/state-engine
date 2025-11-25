@@ -49,7 +49,7 @@ type StorageProxy struct {
 	platform    *statecommon.Platform
 	execCache   *livecache.LiveCache // An object cache for the backend storage, only updated once at the end of the block.
 	execStorage *livestg.LiveStorage
-	ethStorage  *ethstg.EthDataStore
+	ethStorage  *ethstg.EthWorldState
 }
 
 // Cache may also have its storeage, this is the cache only store proxy, no storage.
@@ -123,7 +123,7 @@ func (this *StorageProxy) Retrieve(key string, v any) (any, error) {
 	return this.ReadStorage(key, v)
 }
 
-func (this *StorageProxy) EthStore() *ethstg.EthDataStore { return this.ethStorage } // Eth storage
+func (this *StorageProxy) EthStore() *ethstg.EthWorldState { return this.ethStorage } // Eth storage
 
 func (this *StorageProxy) Preload(data []byte) any {
 	return this.ethStorage.Preload(data)

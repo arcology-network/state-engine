@@ -32,7 +32,6 @@ import (
 	ethrlp "github.com/arcology-network/state-engine/storage/codec/ethcodec/rlp"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	ethdb "github.com/ethereum/go-ethereum/ethdb"
@@ -43,122 +42,119 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-// Account is the structure that holds the account information and a world storage trie, db instance and a disk db instance.
-// It is mainly used for updating the storage tries. The disk db has 16 shards, which could be used for parallel updates in theroy.
-// All 16 shards can be directed to the same disk db, as long as the disk db has internal thread safety. It is the case for now with the leveldb.
-type EthDataStore struct {
+// EthWorldState manages the Ethereum world state, including the global state trie,
+// per-account storage tries, and the shard-aware database backend.
+//
+// It is responsible for reading and updating account state, writing storage
+// changes to the database, and tracking state roots for each block.
+//
+// The backend has 16 logical shards. In the current implementation all shard
+// handles point to the same underlying LevelDB instance. LevelDB does not
+// clearly document whether multiple independent database instances within the
+// same process are supported or recommended, so only one instance is used for
+// safety. The design, however, allows future physical sharding by assigning
+// each shard to its own database directory and storage engine.
+//
+// EthWorldState also keeps an optional account cache for accounts accessed during
+// the current execution cycle, and uses pluggable encoders/decoders for value
+// serialization.
+
+type EthWorldState struct {
 	worldStateTrie *ethmpt.Trie
 
-	accountCacheEnabled bool
-	accountCache        map[ethcommon.Address]*Account // Account cache holds the accountCache that are being accessed in the current cycle.
+	// accountCacheEnabled bool
+	accountCache map[ethcommon.Address]*Account // Account cache holds the accountCache that are being accessed in the current cycle.
 
-	ethdb   *triedb.Database
-	diskdbs [16]ethdb.Database
+	backend *EthShardDB
 	dbErr   error
 
-	lock     sync.RWMutex
-	rootDict map[uint64][32]byte // lookup the root hash for a block number
+	lock       sync.RWMutex
+	blockRoots map[uint64][32]byte // lookup the root hash for a block number
 
 	encoder func(string, any) ([]byte, error)
 	decoder func(string, []byte, any) any
-
-	trieDbConfig *hashdb.Config   // The config for the hash db underlying the trie.
-	encodedCache *fastcache.Cache // A shared cache holding the encoded account states to be used by different instances of the Eth Database
 }
 
 // LoadEthDataStore loads the trie from the database with the root provided.
-func LoadEthDataStore(trieDB *triedb.Database, root [32]byte) (*EthDataStore, error) {
+func LoadEthDataStore(trieDB *triedb.Database, root [32]byte) (*EthWorldState, error) {
 	trie, err := ethmpt.New(ethmpt.TrieID(root), trieDB)
-	if err != nil {
-		return nil, err
-	}
-
-	if trie == nil {
-		return nil, errors.New("Failed to load the trie from the database with the root provided!")
+	if err != nil || trie == nil {
+		return nil, errors.Join(err, errors.New("Failed to load the trie from the database with the root provided!"))
 	}
 
 	diskdb := triedb.GetBackendDB(trieDB).DBs()
-	return NewEthDataStore(trie, trieDB, diskdb), nil
+	backend := &EthShardDB{
+		mainTrieDB:   trieDB,
+		diskShardDBs: diskdb,
+	}
+
+	return NewEthDataStore(trie, backend), nil
 }
 
-func NewEthDataStore(trie *ethmpt.Trie, trieDB *triedb.Database, diskdb [16]ethdb.Database) *EthDataStore {
-	trieDbConfig := &hashdb.Config{CleanCacheSize: 1024 * 1024 * 100} // 100MB of the shared cache
-	return &EthDataStore{
-		rootDict:       map[uint64][32]byte{},
-		ethdb:          trieDB,
-		diskdbs:        diskdb,
-		trieDbConfig:   trieDbConfig,
-		encodedCache:   fastcache.New(trieDbConfig.CleanCacheSize),
-		accountCache:   map[ethcommon.Address]*Account{},
+func NewEthDataStore(trie *ethmpt.Trie, backend *EthShardDB) *EthWorldState {
+	// trieDbConfig := &hashdb.Config{CleanCacheSize: 1024 * 1024 * 100} // 100MB of the shared cache
+	return &EthWorldState{
+		blockRoots: map[uint64][32]byte{},
+
 		worldStateTrie: trie,
-		encoder:        ethrlp.RlpCodec{}.Encode,
-		decoder:        ethrlp.RlpCodec{}.Decode,
+		backend:        backend,
+
+		accountCache: map[ethcommon.Address]*Account{},
+		encoder:      ethrlp.RlpCodec{}.Encode,
+		decoder:      ethrlp.RlpCodec{}.Decode,
 	}
 }
 
-// NewParallelEthMemDataStore creates a new EthDataStore with a memory database.
-func NewParallelEthMemDataStore() *EthDataStore {
-	diskdbs := [16]ethdb.Database{}
-	slice.Fill(diskdbs[:], rawdb.NewMemoryDatabase())
-	db := triedb.NewParallelDatabase(diskdbs, nil)
-
-	return NewEthDataStore(ethmpt.NewEmptyParallel(db), db, diskdbs)
+// NewParallelEthMemDataStore creates a new EthWorldState with a memory database.
+func NewParallelEthMemDataStore() *EthWorldState {
+	shardMemDB := NewEthShardMemDB(&hashdb.Config{CleanCacheSize: 1024 * 1024 * 100})
+	return NewEthDataStore(ethmpt.NewEmptyParallel(shardMemDB.mainTrieDB), shardMemDB)
 }
 
-// NewParallelEthMemDataStore creates a new EthDataStore with a memory database.
-func NewParallelEthMemDataStoreWithSharedCache(trieDbConfig *hashdb.Config, cleanCache *fastcache.Cache) *EthDataStore {
-	diskdbs := [16]ethdb.Database{}
-	slice.Fill(diskdbs[:], rawdb.NewMemoryDatabase())
-	db := triedb.NewParallelDatabaseWithSharedCache(diskdbs, cleanCache, nil)
-
-	return NewEthDataStore(ethmpt.NewEmptyParallel(db), db, diskdbs)
+// NewParallelEthMemDataStore creates a new EthWorldState with a memory database.
+func NewParallelEthMemDataStoreWithSharedCache(trieDbConfig *hashdb.Config, cleanCache *fastcache.Cache) *EthWorldState {
+	shardMemDB := NewEthShardMemDB(trieDbConfig)
+	paraTrie := ethmpt.NewEmptyParallel(shardMemDB.mainTrieDB)
+	return NewEthDataStore(paraTrie, shardMemDB)
 }
 
-// NewLevelDBDataStore creates a new EthDataStore with a leveldb database.
-func NewLevelDBDataStore(dir string) *EthDataStore {
-	leveldb, err := rawdb.NewLevelDBDatabase(dir, 256, 16, "temp", false)
+// NewLevelDBDataStore creates a new EthWorldState with a leveldb database.
+func NewLevelDBDataStore(dir string) *EthWorldState {
+	shardLvlDB, err := NewEthShardLvlDB(dir, &hashdb.Config{CleanCacheSize: 1024 * 1024 * 100})
 	if err != nil {
 		return nil
 	}
-
-	diskdbs := [16]ethdb.Database{}
-	slice.Fill(diskdbs[:], leveldb)
-	db := triedb.NewParallelDatabase(diskdbs, nil)
-
-	return NewEthDataStore(ethmpt.NewEmptyParallel(db), triedb.NewParallelDatabase(diskdbs, nil), diskdbs)
+	paraTrie := ethmpt.NewEmptyParallel(shardLvlDB.mainTrieDB) // A new empty trie
+	return NewEthDataStore(paraTrie, shardLvlDB)
 }
 
 // Preload loads an existing account from the trie and the disk db.
 // If the account is not found, it creates a new account with default account state and shared cache.
-func (this *EthDataStore) Preload(addr []byte) any {
+func (this *EthWorldState) Preload(addr []byte) any {
 	// AccessListCache doesn't serve any purpose for now. It is only a place holder, the parallelized trie update requires its presence.
 	acct, _ := this.GetAccount(ethcommon.BytesToAddress(addr), common.Reference(ethmpt.AccessListCache{}))
 	if acct == nil {
 		acct = NewAccountWithSharedCache( // Account not found, create a new account
 			ethcommon.BytesToAddress(addr),
-			this.diskdbs,
+			// this.diskShardDBs,
+			this.backend,
 			EmptyAccountState(),
-			this.trieDbConfig,
-			this.encodedCache) // empty account state
+			// this.backend.encodedCache,
+		)
 	}
+
+	// this.encodedCache) // empty account state
 	return acct
 }
 
-// func (this *EthDataStore) GetNewIndex() interface {
-// 	Add([]*statecell.StateCell)
-// 	Clear()
-// } {
-// 	return NewEthIndexer(this, 0)
-// }
-
-func (this *EthDataStore) Hash(key string) []byte {
+func (this *EthWorldState) Hash(key string) []byte {
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write([]byte(key))
 	sum := hasher.Sum(nil)
 	return sum
 }
 
-func (this *EthDataStore) GetAccountProof(addr ethcommon.Address) ([]string, error) {
+func (this *EthWorldState) GetAccountProof(addr ethcommon.Address) ([]string, error) {
 	addrHash := crypto.Keccak256(addr.Bytes())
 
 	var proof proofList
@@ -171,7 +167,7 @@ func (this *EthDataStore) GetAccountProof(addr ethcommon.Address) ([]string, err
 }
 
 // Get the account from the cache first, if not found, get it from the trie.
-func (this *EthDataStore) IfExists(key string) bool {
+func (this *EthWorldState) IfExists(key string) bool {
 	accesses := ethmpt.AccessListCache{}
 	_, acctKey, suffix := platform.ParseAccountAddr(key)
 	if len(suffix) == 0 {
@@ -208,11 +204,11 @@ func (this *EthDataStore) IfExists(key string) bool {
 	}
 
 	// address = ethcommon.BytesToAddress([]byte(key))
-	return NewAccount(address, this.diskdbs, stateAccount).Has(key) // Load the account but don't keep it in the cache.
+	return NewAccount(address, this.backend, stateAccount).Has(key) // Load the account but don't keep it in the cache.
 }
 
 // Get the account from the cache first, if not found, get it from the trie.
-func (this *EthDataStore) GetAccount(address ethcommon.Address, accesses *ethmpt.AccessListCache) (*Account, error) {
+func (this *EthWorldState) GetAccount(address ethcommon.Address, accesses *ethmpt.AccessListCache) (*Account, error) {
 	if len(address) > 0 {
 		if v := this.accountCache[address]; v != nil { // Lookup in the cache first
 			return v, nil
@@ -223,7 +219,7 @@ func (this *EthDataStore) GetAccount(address ethcommon.Address, accesses *ethmpt
 }
 
 // Get the account from the trie
-func (this *EthDataStore) GetAccountFromTrie(address ethcommon.Address, accesses *ethmpt.AccessListCache) (*Account, error) {
+func (this *EthWorldState) GetAccountFromTrie(address ethcommon.Address, accesses *ethmpt.AccessListCache) (*Account, error) {
 	acctHash := crypto.Keccak256(address.Bytes()) // Hash the key string
 	buffer, err := this.worldStateTrie.Get(acctHash)
 	if err == nil && len(buffer) > 0 { // Not found
@@ -235,12 +231,12 @@ func (this *EthDataStore) GetAccountFromTrie(address ethcommon.Address, accesses
 			return &Account{
 				addr:         address,
 				StateAccount: acctState,
-				code:         common.FilterFirst(this.diskdbs[0].Get(acctState.CodeHash)).([]byte), // code
+				code:         common.First(this.backend.diskShardDBs[0].Get(acctState.CodeHash)).([]byte), // code
 				storageTrie:  stgTrie,
-				StorageDirty: false,
-				ethdb:        this.ethdb,
-				diskdbShards: this.diskdbs,
-				err:          nil,
+				// TrieDirty:    false,
+				// ethdb:        this.backend.mainTrieDB,
+				// diskdbShards: this.backend.diskShardDBs,
+				err: nil,
 			}, nil
 		}
 		return nil, err
@@ -249,7 +245,7 @@ func (this *EthDataStore) GetAccountFromTrie(address ethcommon.Address, accesses
 }
 
 // Skip the cache and get from the trie
-func (this *EthDataStore) Retrieve(key string, T any) (any, error) {
+func (this *EthWorldState) Retrieve(key string, T any) (any, error) {
 	accesses := ethmpt.AccessListCache{}
 	_, acctKey, _ := platform.ParseAccountAddr(key) // Get the address
 	if len(acctKey) == 0 {
@@ -272,7 +268,7 @@ func (this *EthDataStore) Retrieve(key string, T any) (any, error) {
 }
 
 // The WriteWorldTrie writes the updated accounts to the world trie.
-func (this *EthDataStore) WriteWorldTrie(dirtyAccounts []*Account) [32]byte {
+func (this *EthWorldState) WriteWorldTrie(dirtyAccounts []*Account) [32]byte {
 	encodedAddrs, encodedAcct := [][]byte{}, [][]byte{} // Encode the account key and values
 	common.ParallelExecute(
 		func() { // Account keys
@@ -294,22 +290,22 @@ func (this *EthDataStore) WriteWorldTrie(dirtyAccounts []*Account) [32]byte {
 }
 
 // Calculate the root hash for the world trie
-func (this *EthDataStore) LatestWorldTrieRoot() [32]byte {
+func (this *EthWorldState) LatestWorldTrieRoot() [32]byte {
 	return this.worldStateTrie.Hash() // Store the root hash for the block
 }
 
-func (this *EthDataStore) ShouldPersistToEth(blockNum uint64, dirtyAccounts []*Account) {
+func (this *EthWorldState) ShouldPersistToEth(blockNum uint64, dirtyAccounts []*Account) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
 	// It Only keeps the last 1024 root hashes. Remove the oldest root hash if the root hash map is full.
-	for len(this.rootDict) >= 1024 {
-		_, minBlockNum := slice.Min(mapi.Keys(this.rootDict))
-		delete(this.rootDict, minBlockNum)
+	for len(this.blockRoots) >= 1024 {
+		_, minBlockNum := slice.Min(mapi.Keys(this.blockRoots))
+		delete(this.blockRoots, minBlockNum)
 	}
 
 	// Write the world root hash to the root hash map.
-	this.rootDict[blockNum] = this.worldStateTrie.Hash() // Store the root hash for the block
+	this.blockRoots[blockNum] = this.worldStateTrie.Hash() // Store the root hash for the block
 
 	// dirtyAccounts may contain the same account multiple times, updating them in parallel directly may cause concurrency issues.
 	// So, we need to merge the accounts and put them in slices, identical accounts will be put together in the same slice.
@@ -332,13 +328,14 @@ func (this *EthDataStore) ShouldPersistToEth(blockNum uint64, dirtyAccounts []*A
 	})
 
 	var err error
-	this.worldStateTrie, err = parallelcommitToEthDB(this.worldStateTrie, this.ethdb, blockNum) // Reload the trie for the next block
+	this.worldStateTrie, err = this.backend.commitTrieToDB(this.worldStateTrie, blockNum)
+	// this.worldStateTrie, err = parallelcommitToEthDB(this.worldStateTrie, this.backend.mainTrieDB, blockNum) // Reload the trie for the next block
 	if err != nil {
 		this.dbErr = errors.Join(this.dbErr, err)
 	}
 }
 
-func (this *EthDataStore) BatchRetrieve(keys []string, T []any) []any {
+func (this *EthWorldState) BatchRetrieve(keys []string, T []any) []any {
 	values := make([]any, len(keys))
 	for i := 0; i < len(keys); i++ {
 		values[i], _ = this.Retrieve(keys[i], T[i])
@@ -346,32 +343,32 @@ func (this *EthDataStore) BatchRetrieve(keys []string, T []any) []any {
 	return values
 }
 
-func (this *EthDataStore) DiskDBs() [16]ethdb.Database {
-	return this.diskdbs
+func (this *EthWorldState) DiskDBs() [16]ethdb.Database {
+	return this.backend.diskShardDBs
 }
 
 // Place holders
-func (this *EthDataStore) Root() [32]byte                                { return this.worldStateTrie.Hash() }
-func (this *EthDataStore) Encoder(any) func(string, any) ([]byte, error) { return this.encoder }
-func (this *EthDataStore) Decoder(any) func(string, []byte, any) any     { return this.decoder }
-func (this *EthDataStore) EthDB() *triedb.Database                       { return this.ethdb }
-func (this *EthDataStore) Trie() *ethmpt.Trie                            { return this.worldStateTrie }
-func (this *EthDataStore) UpdateCacheStats([]any)                        {}
-func (this *EthDataStore) Print()                                        {}
-func (this *EthDataStore) CheckSum() [32]byte                            { return [32]byte{} }
-func (this *EthDataStore) Query(string, func(string, string) bool) ([]string, [][]byte, error) {
+func (this *EthWorldState) Root() [32]byte                                { return this.worldStateTrie.Hash() }
+func (this *EthWorldState) Encoder(any) func(string, any) ([]byte, error) { return this.encoder }
+func (this *EthWorldState) Decoder(any) func(string, []byte, any) any     { return this.decoder }
+func (this *EthWorldState) EthDB() *triedb.Database                       { return this.backend.mainTrieDB }
+func (this *EthWorldState) Trie() *ethmpt.Trie                            { return this.worldStateTrie }
+func (this *EthWorldState) UpdateCacheStats([]any)                        {}
+func (this *EthWorldState) Print()                                        {}
+func (this *EthWorldState) CheckSum() [32]byte                            { return [32]byte{} }
+func (this *EthWorldState) Query(string, func(string, string) bool) ([]string, [][]byte, error) {
 	return nil, nil, nil
 }
 
-func (this *EthDataStore) EnableAccountCache()                         { this.accountCacheEnabled = true }
-func (this *EthDataStore) DisableAccountCache()                        { this.accountCacheEnabled = false }
-func (this *EthDataStore) AccountDict() map[ethcommon.Address]*Account { return this.accountCache }
-func (this *EthDataStore) Clear()                                      {}
+// func (this *EthWorldState) EnableAccountCache()                         { this.accountCacheEnabled = true }
+// func (this *EthWorldState) DisableAccountCache()                        { this.accountCacheEnabled = false }
+func (this *EthWorldState) AccountCache() map[ethcommon.Address]*Account { return this.accountCache }
+func (this *EthWorldState) Clear()                                       {}
 
-func (this *EthDataStore) Inject(key string, value any) error { return nil }
+func (this *EthWorldState) Inject(key string, value any) error { return nil }
 
-func (this *EthDataStore) GetRootHash(blockNum uint64) [32]byte {
+func (this *EthWorldState) GetRootHash(blockNum uint64) [32]byte {
 	this.lock.RLock()
 	defer this.lock.RUnlock()
-	return this.rootDict[blockNum]
+	return this.blockRoots[blockNum]
 }

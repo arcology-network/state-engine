@@ -26,7 +26,7 @@ import (
 // AccountStorage represents an Ethereum account with its associated
 // storage trie and underlying databases.
 type AccountStorage struct {
-	StorageDirty bool
+	TrieDirty    bool
 	storageTrie  *ethmpt.Trie // account storage trie
 	ethdb        *tridb.Database
 	diskdbShards [16]ethdb.Database
