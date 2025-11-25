@@ -25,17 +25,18 @@ import (
 
 // PreloadMatched preloads the paths that match the wildcard delete path that are about to be deleted by the
 // the current write operation.
-func (this *StateCache) MatchWildcard(path string, T any) (bool, *statecell.StateCell) {
-	for _, wildcardPath := range this.committedDel {
+func (this *StateCache) ResolveWildcardDeletion(path string, T any) (bool, *statecell.StateCell) {
+	// Delete only for now.
+	for _, wildcardPath := range this.pendingWildcardDeletes {
 		if len(path) < len(wildcardPath.Second) {
 			continue
 		}
 
 		if bytes.Equal([]byte(path[:len(wildcardPath.Second)]), []byte(wildcardPath.Second)) {
-			univ := this.LoadFromCommitted(0, path, T) // Preload the path from the backend
-			univ.SetValue(nil)                         // To indicate t the path has been deleted by the wildcard
-			univ.IncrementWrites(1)
-			return true, univ
+			cell := this.LoadFromCommitted(0, path, T) // Preload the path from the backend
+			cell.SetValue(nil)                         // To indicate t the path has been deleted by the wildcard
+			cell.IncrementWrites(1)
+			return true, cell
 		}
 	}
 	return false, nil
@@ -44,7 +45,7 @@ func (this *StateCache) MatchWildcard(path string, T any) (bool, *statecell.Stat
 // WildcardsToUnivalue converts wildcard paths to StateCell for exporting.
 func (this *StateCache) WildcardsToStateCell() []*statecell.StateCell {
 	univs := make([]*statecell.StateCell, 0)
-	for _, wildcardPath := range this.committedDel {
+	for _, wildcardPath := range this.pendingWildcardDeletes {
 		newV := statecell.NewStateCell(wildcardPath.First, wildcardPath.Second+"*", 0, 1, 0, nil, nil)
 		newV.SetPreexist(true) // Mark as pre-existing, so it pass through the filter.
 		univs = append(univs, newV)

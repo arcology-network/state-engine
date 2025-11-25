@@ -63,7 +63,7 @@ func NewStateStore(backend *proxy.StorageProxy) *StateStore {
 	committer := committer.NewStateCommitter(store, store.GetWriters())
 	committer.Import(initTrans)
 	committer.Precommit([]uint64{stgcommon.SYSTEM})
-	committer.Commit(0)
+	committer.DebugCommit(0)
 	return store
 }
 

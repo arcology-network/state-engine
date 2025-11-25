@@ -192,27 +192,29 @@ func (this *StateCommitter) AsyncPrecommit() {
 		})
 }
 
-// Commit commits the transitions to different stores.
-// This is mainly for degugging purposes. The two functions should
-// be called separately, one for synchronous commit and one for asynchronous commit.
-func (this *StateCommitter) Commit(blockNum uint64) *StateCommitter {
+// DebugCommit runs BOTH SyncCommit and AsyncCommit.
+// This must only be used for debugging and tests.
+// Production code must call SyncCommit and AsyncCommit separately.
+func (this *StateCommitter) DebugCommit(blockNum uint64) *StateCommitter {
 	this.SyncCommit(blockNum)
 	this.AsyncCommit(blockNum)
 	return this
 }
 
 // Only the global write cache needs to be synchronized before the next precommit.
+// For the time sensitive writers, do sync commit first, like the live cache.
 func (this *StateCommitter) SyncCommit(blockNum uint64) {
 	slice.ParallelForeach(this.syncWriters, len(this.syncWriters),
 		func(_ int, writer *stgcommon.Writer[*statecell.StateCell]) {
-			(*writer).Commit(blockNum)
+			(*writer).DebugCommit(blockNum)
 		})
 }
 
 // Only the global write cache needs to be synchronized before the next precommit.
+// For the time insensitive writers, do async commit later, like the eth storage.
 func (this *StateCommitter) AsyncCommit(blockNum uint64) {
 	slice.ParallelForeach(this.asyncWriters, len(this.asyncWriters),
 		func(_ int, writer *stgcommon.Writer[*statecell.StateCell]) {
-			(*writer).Commit(blockNum)
+			(*writer).DebugCommit(blockNum)
 		})
 }

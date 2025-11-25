@@ -45,23 +45,85 @@ import (
 	stgeth "github.com/arcology-network/state-engine/common"
 )
 
-// StateCache is a read-only data backend used for caching.
+// StateCache stores the *per-execution* working set of StateCells for a single
+// transaction or execution context.
+//
+// This layer sits between:
+//   - the global committed storage (backend), and
+//   - the per-transaction read/write operations performed during execution.
+//
+// Responsibilities of StateCache:
+//   - lazy materialization of StateCells (only create when accessed)
+//   - wildcard/container-based inherited state resolution
+//   - deletion propagation (parent wildcard delete → child logical delete)
+//   - tracking local reads/writes for conflict detection
+//   - maintaining deterministic execution order
+//
+// IMPORTANT:
+//
+//	StateCache is NOT global state. It is NOT the MPT. It is the *local
+//	execution view* used to ensure correctness, determinism, and CRDT/container
+//	semantics. Modifying its logic incorrectly can break replay determinism,
+//	wildcard deletion behavior, lazy materialization rules, and conflict
+//	detection invariants.
 type StateCache struct {
-	backend      stgcommon.ReadOnlyStore
-	kvDict       map[string]*statecell.StateCell     // Local KV lookup
-	committedDel []*associative.Pair[uint64, string] // Paths delete by wildcard
-	platform     stgeth.Platform
-	pool         *mempool.Mempool[*statecell.StateCell]
+	// backend is the read-only storage interface for accessing *committed*
+	// global state (MPT / flattened DB). Reads fall back to backend when
+	// a path is not found locally. backend must never be mutated here.
+	backend stgcommon.ReadOnlyStore
+
+	// localCells stores lazily-materialized StateCells for the current
+	// execution. A cell is added when:
+	//   - it is accessed directly,
+	//   - or ResolveWildcardDeletion determines that it inherits state from a
+	//     wildcard-deleted parent container.
+	//
+	// localCells is the authoritative view for:
+	//   - local reads/writes,
+	//   - conflict detection,
+	//   - determinism of state expansion,
+	//   - deletion propagation to children.
+	//
+	// NOTE:
+	//   Children are *not* materialized on parent delete. They appear here
+	//   only when accessed ("lazy materialization"). This is critical for
+	//   performance and deterministic replay.
+	localCells map[string]*statecell.StateCell // Local KV lookup
+
+	// pendingWildcardDeletes records wildcard delete operations encountered
+	// during execution. Each entry contains:
+	//   (generationID, wildcardPath)
+	//
+	// These deletes must be committed to global storage only after execution
+	// completes, otherwise timing differences would break determinism.
+	//
+	// This queue ensures:
+	//   - correct ordering of wildcard deletes,
+	//   - no premature state mutation,
+	//   - deferred deletion behavior for MPT/flattened storage commit.
+	pendingWildcardDeletes []*associative.Pair[uint64, string] // Paths delete by wildcard
+
+	// platform identifies the execution platform (e.g. ETH_PATH). StateCache
+	// may apply platform-specific rules for storage layout, path normalization,
+	// or encoding behavior.
+	platform stgeth.Platform
+
+	// pool is an object pool for allocating StateCell instances efficiently.
+	// StateCells are created frequently—using an object pool minimizes GC
+	// overhead and reduces allocation churn during execution.
+	pool *mempool.Mempool[*statecell.StateCell]
 }
 
-// NewStateCache creates a new instance of StateCache; the backend can be another instance of StateCache,
-// resulting in a cascading-like structure.
+// StateCache holds the per-execution working set of StateCells.
+// This is the local view of state used during transaction execution.
+// It supports lazy materialization, wildcard delete inheritance,
+// and correct conflict detection.
 func NewStateCache(backend stgcommon.ReadOnlyStore, perPage int, numPages int, args ...any) *StateCache {
 	return &StateCache{
-		backend:      backend,
-		kvDict:       make(map[string]*statecell.StateCell),
-		committedDel: make([]*associative.Pair[uint64, string], 0),
-		platform:     *stgeth.NewPlatform(),
+		backend:                backend,
+		localCells:             make(map[string]*statecell.StateCell),
+		pendingWildcardDeletes: make([]*associative.Pair[uint64, string], 0),
+		platform:               *stgeth.NewPlatform(),
 		pool: mempool.NewMempool(perPage, numPages, func() *statecell.StateCell {
 			return new(statecell.StateCell)
 		}, (&statecell.StateCell{}).Reset),
@@ -73,9 +135,9 @@ func (this *StateCache) SetReadOnlyBackend(backend stgcommon.ReadOnlyStore) *Sta
 	return this
 }
 
-func (this *StateCache) AddToDict(v *statecell.StateCell)        { this.kvDict[*v.GetPath()] = v }
+func (this *StateCache) AddToDict(v *statecell.StateCell)        { this.localCells[*v.GetPath()] = v }
 func (this *StateCache) ReadOnlyStore() stgcommon.ReadOnlyStore  { return this.backend }
-func (this *StateCache) Cache() *map[string]*statecell.StateCell { return &this.kvDict }
+func (this *StateCache) Cache() *map[string]*statecell.StateCell { return &this.localCells }
 func (this *StateCache) Preload([]byte) any                      { return nil } //.
 // Placeholder
 func (this *StateCache) NewStateCell() *statecell.StateCell { return this.pool.New() }
@@ -95,7 +157,6 @@ func (this *StateCache) NewStateCell() *statecell.StateCell { return this.pool.N
 // still find them and their immediate parent path also exists, although their grandparent path
 // are gone. Unless we recursively check the parent paths, we can't tell if they are truly gone.
 // This requires a lot of queries and decoding.
-
 func (this *StateCache) ExistsInParent(path string) bool {
 	// No metadata for immediate children of system paths.
 	if this.platform.IsImmediateChildOfSysPath(path) {
@@ -103,7 +164,7 @@ func (this *StateCache) ExistsInParent(path string) bool {
 	}
 
 	parentPath, _ := stgcommon.GetParentPath(path) // Get the parent path
-	if meta, _, _ := this.FindForWrite(0, parentPath, new(commutative.Path), nil); meta != nil {
+	if meta, _, _ := this.LookupOrMaterialize(0, parentPath, new(commutative.Path), nil); meta != nil {
 		childKey := path[len(parentPath):]
 		if ok, _ := meta.(*commutative.Path).Exists(childKey); ok { // Add the path to the parent path
 			return ok
@@ -113,90 +174,140 @@ func (this *StateCache) ExistsInParent(path string) bool {
 }
 
 // Get the raw value directly, put it in an empty cell without recording
-// the access. `Won't` update the kvDict.
-func (this *StateCache) FindForRead(tx uint64, path string, T any, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
+// the access. `Won't` update the localCells.
+func (this *StateCache) LookupForRead(tx uint64, path string, T any, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
+	// If the path doesn't exist in the parent snapshot at all (no committed
+	// value, no wildcard/container inheritance), just return an empty,
+	// non-cached cell.
 	if !this.ExistsInParent(path) {
 		return nil, this.NewStateCell().Init(tx, path, 0, 0, 0, nil, false), false
 	}
-	return this.FindForWrite(tx, path, T, do) // Find the value in the cache
+
+	// For existing paths (including those affected by wildcard/container
+	// semantics), reuse the full resolution pipeline. This may materialize
+	// a StateCell into localCells, but the caller is still "read-only" from
+	// a semantics point of view.
+	return this.LookupOrMaterialize(tx, path, T, do) // Find the value in the cache
 }
 
-func (this *StateCache) FindForWrite(tx uint64, path string, T any, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
-	if univ, ok := this.kvDict[path]; ok {
-		return univ.Value(), univ, true // From cache
+// FindForWrite resolves the StateCell for `path` through a 3-step lookup:
+//
+//  1. localCells (already materialized in this cache)
+//  2. wildcard-inherited deletion (lazy materialization)
+//  3. committed storage backend
+//
+// It may insert a new StateCell into localCells when a wildcard/container
+// delete implies a *logical* deleted state for this path.
+func (this *StateCache) LookupOrMaterialize(tx uint64, path string, T any, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
+	if cell, ok := this.localCells[path]; ok {
+		return cell.Value(), cell, true // From cache
 	}
 
-	// If the path is a covered by a wildcard.
-	if matched, univ := this.MatchWildcard(path, T); matched {
-		this.kvDict[path] = univ // Add to the cache
-		return univ.Value(), univ, false
+	//  This is a LAZY materialization step, mainly for performance.
+
+	// Handles inherited state for a path that is NOT present in localCells,
+	// but whose parent matches a wildcard container that has been deleted.
+	//
+	// When a container path (e.g. "x/*") is deleted, all of its children become
+	// *logically* deleted. However, these children are **not** materialized in any
+	// execution cache at delete time. If we expanded all children eagerly, every
+	// Execution Unit (each running its own EVM + cache) would end up materializing
+	// the same millions of child paths.
+	//
+	// This would overwhelm the entire state engine:
+	//   - massive duplicated deletions sent to conflict detection,
+	//   - huge repeated expansion work in each EU,
+	//   - unnecessary state growth across all execution contexts,
+	//
+	// To avoid this, Arcology uses **lazy materialization**:
+	//
+	//   - A child StateCell is created only when that path is actually accessed.
+	//   - If the parent container was deleted, the child inherits the deleted state.
+	//   - The derived StateCell is inserted into localCellCache.
+	//
+	// This prevents duplicated work across parallel executors, keeps state expansion
+	// deterministic, and avoids saturating the conflict-detection and storage engine.
+	if ok, cell := this.ResolveWildcardDeletion(path, T); ok {
+		this.localCells[path] = cell // Add to the cache because should logically already be there.
+		return cell.Value(), cell, false
 	}
 
-	univ := this.LoadFromCommitted(tx, path, T)
+	// Fallback: load from the committed store.
+	cell := this.LoadFromCommitted(tx, path, T)
 	if do != nil {
-		do(univ) // Call the callback function if provided
+		do(cell) // Call the callback function if provided
 	}
-	return univ.Value(), univ, false
+	return cell.Value(), cell, false
 }
 
+// Write applies newVal to path, tracks size delta, and invokes optional callback.
 func (this *StateCache) Write(tx uint64, path string, newVal any, args ...any) (int64, error) {
 	if newVal != nil && newVal.(crdtcommon.Type).TypeID() == uint8(reflect.Invalid) { // Neither a valid replacement nor a delete operation.
 		return 0, errors.New("Error: Unknown data type !")
 	}
 
-	univ, err := this.write(tx, path, newVal)
+	cell, err := this.write(tx, path, newVal)
 	sizeDif := this.DiffSize(tx, path, newVal) // Update the size difference
 	if len(args) > 0 && args[0] != nil {
-		args[0].(func(*statecell.StateCell, int64))(univ, sizeDif) // Call the callback function if provided
+		args[0].(func(*statecell.StateCell, int64))(cell, sizeDif) // Call the callback function if provided
 	}
 	return sizeDif, err
 }
 
+
+// write stores a value in the state cache at the specified path, creating or materializing the associated state cell,
+// ensuring parent metadata is updated when necessary, and propagating transient status from the parent path; it fails if
+// the parent path is missing and the transaction is not SYSTEM.
 func (this *StateCache) write(tx uint64, path string, value any) (*statecell.StateCell, error) {
 	parentPath, _ := stgcommon.GetParentPath(path)
-	univ := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default cell wrapper
+	cell := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default cell wrapper
 	if this.IfExists(parentPath) || tx == stgcommon.SYSTEM {      // The parent path exists or to inject the path directly
 		var err error
 		var inCache bool
 
 		// Not a special expression, just a value update.
 		if !strings.HasSuffix(path, "*") && !strings.HasSuffix(path, "[:]") {
-			_, univ, inCache = this.FindForWrite(tx, path, value, this.AddToDict) // Get a cell wrapper
-			err = univ.Set(tx, path, value, inCache, this)                        // set the new value
+			_, cell, inCache = this.LookupOrMaterialize(tx, path, value, this.AddToDict) // Get a cell wrapper
+			err = cell.Set(tx, path, value, inCache, this)                               // set the new value
 		}
 
 		// Update the parent path meta
 		if err == nil {
 			// Only track of the children of concurrent paths.
+			// blcc://eth1.0/account/0x123456790/container/ all the sub paths under container will need to check if
+			// their parent path exists. The parent path missing issue actually only happens beyond the context of
+			// the crdt domain. For a crdt container initated using the library api, its parent path always exists.
 			if strings.HasSuffix(parentPath, "/container/") || !this.platform.IsSysPath(parentPath) && tx != stgcommon.SYSTEM {
-				_, parentMeta, inCache := this.FindForWrite(tx, parentPath, new(commutative.Path), this.AddToDict)
-				err = parentMeta.Set(tx, path, univ.Value(), inCache, this)
+				_, parentMeta, inCache := this.LookupOrMaterialize(tx, parentPath, new(commutative.Path), this.AddToDict)
+				err = parentMeta.Set(tx, path, cell.Value(), inCache, this)
 			}
 
 			// Set Transient Status based on its parent path settings. A transient path will not be persisted after
 			// the a generation or a block is committed. This makes it different from either a normal state updates or
 			// a memory variable.
-			if pathMeta, _, _ := this.FindForRead(tx, parentPath, new(commutative.Path), nil); pathMeta != nil { // Get the parent path meta
-				univ.SetBlockBound(pathMeta.(*commutative.Path).IsBlockBound()) // Use the parent path transient status to set the current path
+			if pathMeta, _, _ := this.LookupForRead(tx, parentPath, new(commutative.Path), nil); pathMeta != nil { // Get the parent path meta
+				cell.SetBlockBound(pathMeta.(*commutative.Path).IsBlockBound()) // Use the parent path transient status to set the current path
 			}
 		}
-		return univ, err
+		return cell, err
 	}
-	return univ, errors.New("Error: The parent path " + parentPath + " doesn't exist for " + path)
+	return cell, errors.New("Error: The parent path " + parentPath + " doesn't exist for " + path)
 }
 
 // Get the raw value directly WITHOUT tracking the accessing record.
 // Users need to count access themselves.
 func (this *StateCache) Retrieve(path string, T any) (any, error) {
-	typedv, _, _ := this.FindForRead(stgcommon.SYSTEM, path, T, nil)
+	typedv, _, _ := this.LookupForRead(stgcommon.SYSTEM, path, T, nil)
 	if typedv == nil || typedv.(crdtcommon.Type).IsDeltaApplied() {
 		return typedv, nil
 	}
 
 	// Special treatment for the commutative.Path.
 	// In general, value types need to be fully cloned as well, so they be
-	// manipulated without affecting the original value. But this doesn't apply to the commutative.Path, which
-	// has its own change tracking mechanism.
+	// manipulated without affecting the original value. But this doesn't apply
+	// to the commutative.Path, which has its own change tracking mechanism.
+	// The clone() here isn't going to clone everything inside the Path, but just
+	// the delta part. The committed part is still shared to save memory.
 	if common.IsType[*commutative.Path](typedv) {
 		return typedv.(*commutative.Path).Clone(), nil
 	}
@@ -208,7 +319,7 @@ func (this *StateCache) Retrieve(path string, T any) (any, error) {
 }
 
 // The load the data from the backend. Since the state is already isCommitted, it is read-only.
-// No need to add it to the kvDict or keep track of the access.
+// No need to add it to the localCells or keep track of the access.
 func (this *StateCache) LoadFromCommitted(tx uint64, path string, T any) *statecell.StateCell {
 	var typedv any
 	if backend := this.ReadOnlyStore(); backend != nil {
@@ -226,7 +337,7 @@ func (this *StateCache) ReadStorage(key string, T any) (any, error) {
 }
 
 func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
-	_, stcell, _ := this.FindForRead(tx, path, T, this.AddToDict) // Get the cell wrapper
+	_, stcell, _ := this.LookupForRead(tx, path, T, this.AddToDict) // Get the cell wrapper
 
 	// need to check if it is in the memory. If so gas price should be 3 instead.
 	dataSize := stgcommon.MIN_READ_SIZE
@@ -236,9 +347,11 @@ func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
 	return stcell.Get(tx, path, nil), stcell, dataSize
 }
 
+// DiffSize returns the memory size delta between the current cell value and newVal.
+// This is used for tracking memory usage changes in the StateCache and calculating fees.
 func (this *StateCache) DiffSize(tx uint64, path string, newVal any) int64 {
 	oldSize := int64(0)
-	if oldVal, _, _ := this.FindForRead(tx, path, newVal, nil); oldVal != nil {
+	if oldVal, _, _ := this.LookupForRead(tx, path, newVal, nil); oldVal != nil {
 		oldSize += int64(oldVal.(crdtcommon.Type).MemSize())
 	}
 
@@ -252,8 +365,8 @@ func (this *StateCache) DiffSize(tx uint64, path string, newVal any) int64 {
 
 // Get the raw value directly, skip the access counting at the cell level
 func (this *StateCache) GetIfCached(path string) (any, bool) {
-	univ, ok := this.kvDict[path]
-	return univ, ok
+	cell, ok := this.localCells[path]
+	return cell, ok
 }
 
 // Check if the path exists in the writecache or the backend.
@@ -264,7 +377,7 @@ func (this *StateCache) IfExists(path string) bool {
 		return true
 	}
 
-	if v := this.kvDict[path]; v != nil {
+	if v := this.localCells[path]; v != nil {
 		return v.Value() != nil // If value == nil means either it's been deleted or never existed.
 	}
 
@@ -327,17 +440,17 @@ func (this *StateCache) Insert(transitions []*statecell.StateCell) *StateCache {
 // Reset the writecache to the initial state for the next round of processing.
 func (this *StateCache) Clear() *StateCache {
 	this.pool.Reset()
-	clear(this.kvDict)
+	clear(this.localCells)
 	return this
 }
 
 func (this *StateCache) Equal(other *StateCache) bool {
-	thisBuffer := mapi.Values(this.kvDict)
+	thisBuffer := mapi.Values(this.localCells)
 	sort.SliceStable(thisBuffer, func(i, j int) bool {
 		return *thisBuffer[i].GetPath() < *thisBuffer[j].GetPath()
 	})
 
-	otherBuffer := mapi.Values(other.kvDict)
+	otherBuffer := mapi.Values(other.localCells)
 	sort.SliceStable(otherBuffer, func(i, j int) bool {
 		return *otherBuffer[i].GetPath() < *otherBuffer[j].GetPath()
 	})
@@ -349,7 +462,7 @@ func (this *StateCache) Equal(other *StateCache) bool {
 // Export the content of the writecache to two arrays of cells.
 // One for the accesses and the other for the transitions.
 func (this *StateCache) Export(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) []*statecell.StateCell {
-	buffer := mapi.Values(this.kvDict)
+	buffer := mapi.Values(this.localCells)
 	for _, proc := range preprocs {
 		buffer = common.IfThenDo1st(proc != nil, func() []*statecell.StateCell {
 			return proc(buffer)
@@ -386,7 +499,7 @@ func (this *StateCache) KVs() ([]string, []crdtcommon.Type) {
 // This function is used to write the cache to the data source directly to bypass all the intermediate steps,
 // including the conflict detection.
 func (this *StateCache) Print() {
-	values := mapi.Values(this.kvDict)
+	values := mapi.Values(this.localCells)
 	sort.SliceStable(values, func(i, j int) bool {
 		return *values[i].GetPath() < *values[j].GetPath()
 	})
@@ -399,7 +512,7 @@ func (this *StateCache) Print() {
 
 // Calculate the checksum of the writecache for integrity check.
 func (this *StateCache) Checksum() [32]byte {
-	values := mapi.Values(this.kvDict)
+	values := mapi.Values(this.localCells)
 	sort.SliceStable(values, func(i, j int) bool {
 		return *values[i].GetPath() < *values[j].GetPath()
 	})

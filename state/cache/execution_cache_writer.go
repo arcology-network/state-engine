@@ -36,7 +36,7 @@ func NewExecutionCacheWriter(writeCache *StateCache, version int64) *ExecutionCa
 func (this *ExecutionCacheWriter) Precommit(isSync bool) {
 	this.ExecutionCacheIndexer.Finalize() // Remove the nil transitions
 	for i := range this.ExecutionCacheIndexer.buffer {
-		this.StateCache.kvDict[*this.ExecutionCacheIndexer.buffer[i].GetPath()] = this.ExecutionCacheIndexer.buffer[i]
+		this.StateCache.localCells[*this.ExecutionCacheIndexer.buffer[i].GetPath()] = this.ExecutionCacheIndexer.buffer[i]
 	}
 	this.ExecutionCacheIndexer = NewExecutionCacheIndexer(nil, -1, nil)
 

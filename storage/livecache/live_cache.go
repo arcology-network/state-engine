@@ -131,7 +131,7 @@ func (this *LiveCache) Commit(univals []*statecell.StateCell, block uint64) {
 		return pair
 	})
 
-	this.ReadCache.Commit(keys, pairedVals) // update the local cache with the new values in the indexer
+	this.ReadCache.DebugCommit(keys, pairedVals) // update the local cache with the new values in the indexer
 }
 
 func (this *LiveCache) Print() {

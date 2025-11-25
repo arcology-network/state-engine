@@ -44,7 +44,7 @@ func (this *StateCacheFilter) ToBuffer() []*statecell.StateCell {
 }
 
 func (this *StateCacheFilter) RemoveByAddress(addr string) {
-	mapi.RemoveIf(this.kvDict,
+	mapi.RemoveIf(this.localCells,
 		func(path string, _ *statecell.StateCell) bool {
 			return path[stgcommon.ETH_ACCOUNT_PREFIX_LENGTH:stgcommon.ETH_ACCOUNT_PREFIX_LENGTH+stgcommon.ETH_ACCOUNT_LENGTH] == addr
 		},
