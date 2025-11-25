@@ -26,6 +26,8 @@ import (
 	"github.com/arcology-network/common-lib/exp/slice"
 )
 
+// EthStorageWriter orchestrates buffering of staged account state transitions, updates the world trie,
+// and finalizes batched commits to the underlying Ethereum-compatible storage.
 type EthStorageWriter struct {
 	*EthIndexer
 	buffer   []*EthIndexer

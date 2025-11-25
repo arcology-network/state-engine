@@ -31,48 +31,8 @@ import (
 	// ethmpt "github.com/ethereum/go-ethereum/trie"
 )
 
-// ethapi "github.com/ethereum/go-ethereum/internal/ethapi"
-
-// func commitTrieToDB(trie *ethmpt.Trie, ethdb *triedb.Database, block uint64) (*ethmpt.Trie, error) {
-// 	root, nodes, err := trie.Commit(false) // Finalized the trie
-// 	if err != nil {
-// 		return nil, errors.Join(errors.New("trie.Commit:"), err)
-// 	}
-
-// 	if nodes != nil {
-// 		if err := ethdb.Update(root, types.EmptyRootHash, block, trienode.NewWithNodeSet(nodes), nil); err != nil { // Move to DB dirty node set
-// 			return nil, errors.Join(errors.New("ethdb.Update"), err)
-// 		}
-
-// 		if err := ethdb.Commit(root, false); err != nil {
-// 			return nil, errors.Join(errors.New("ethdb.Commit:"), err)
-// 		}
-// 	}
-// 	newTrie, err := ethmpt.NewParallel(ethmpt.TrieID(root), ethdb)
-// 	if err != nil {
-// 		err = errors.Join(errors.New("ethmpt.NewParallel:"), err)
-// 	}
-// 	return newTrie, err
-// }
-
-// func parallelcommitToEthDB(trie *ethmpt.Trie, ethdb *triedb.Database, block uint64) (*ethmpt.Trie, error) {
-// 	root, nodes, err := trie.Commit(false) // Finalized the trie
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if nodes != nil {
-// 		if err := ethdb.Update(root, types.EmptyRootHash, block, trienode.NewWithNodeSet(nodes), nil); err != nil { // Move to DB dirty node set
-// 			return nil, err
-// 		}
-
-// 		if err := ethdb.Commit(root, false); err != nil {
-// 			return nil, err
-// 		}
-// 	}
-// 	return ethmpt.NewParallel(ethmpt.TrieID(root), ethdb)
-// }
-
+// ProofArrayToDB builds an in-memory trie database from the provided hex-encoded proof nodes.
+// The nodes are decoded, optionally hashed when larger than 32 bytes, and inserted into memorydb.
 func ProofArrayToDB(proofs []string) (*memorydb.Database, error) {
 	proofDB := memorydb.New()
 	for i := 0; i < len(proofs); i++ {
@@ -86,6 +46,8 @@ func ProofArrayToDB(proofs []string) (*memorydb.Database, error) {
 	return proofDB, nil
 }
 
+// VerifyProof ensures that the supplied Merkle proof corresponds to the given root hash and address.
+// It panics if the verification fails or if the proof data is empty.
 func VerifyProof(rootHash ethcommon.Hash, proof []string, addr []byte) {
 	proofDB, _ := ProofArrayToDB(proof)
 	data, err := ethmpt.VerifyProof(rootHash, crypto.Keccak256(addr), proofDB)

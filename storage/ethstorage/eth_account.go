@@ -15,6 +15,10 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+// Account wraps an Ethereum-compatible state account and its storage trie, providing
+// helpers for reading, updating, and committing the account’s balance, nonce, code,
+// and storage values against the shard-backed trie database.
+
 package ethstorage
 
 import (
