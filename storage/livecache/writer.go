@@ -71,7 +71,7 @@ func (this *LiveCacheWriter) Commit(block uint64) {
 	}
 
 	merged := new(LiveCacheIndexer).Merge(this.buffer) // Merge indexers
-	this.liveCache.DebugCommit(merged.buffer, block)   // commit univalues directly
+	this.liveCache.Commit(merged.buffer, block)        // commit univalues directly
 	this.buffer = make([]*LiveCacheIndexer, 0)         // Reset the indexer buffer
 }
 

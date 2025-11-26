@@ -206,7 +206,7 @@ func (this *StateCommitter) DebugCommit(blockNum uint64) *StateCommitter {
 func (this *StateCommitter) SyncCommit(blockNum uint64) {
 	slice.ParallelForeach(this.syncWriters, len(this.syncWriters),
 		func(_ int, writer *stgcommon.Writer[*statecell.StateCell]) {
-			(*writer).DebugCommit(blockNum)
+			(*writer).Commit(blockNum)
 		})
 }
 
@@ -215,6 +215,6 @@ func (this *StateCommitter) SyncCommit(blockNum uint64) {
 func (this *StateCommitter) AsyncCommit(blockNum uint64) {
 	slice.ParallelForeach(this.asyncWriters, len(this.asyncWriters),
 		func(_ int, writer *stgcommon.Writer[*statecell.StateCell]) {
-			(*writer).DebugCommit(blockNum)
+			(*writer).Commit(blockNum)
 		})
 }
