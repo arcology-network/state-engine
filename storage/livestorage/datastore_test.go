@@ -81,7 +81,7 @@ func TestDatastorePersistentStorage(t *testing.T) {
 	values := [][]byte{{1, 2, 3}, {4, 5, 6}}
 
 	//policy := policy.(1234, 1.0)
-	encoder := func(_ string, v any) []byte { return codec.Bytes(v.([]byte)).Encode() }
+	encoder := func(_ string, v any) ([]byte, error) { return codec.Bytes(v.([]byte)).Encode(), nil }
 	decoder := func(_ string, data []byte, _ any) any { return codec.Bytes("").Decode(data) }
 
 	// fileDB.BatchSet(keys, values)
@@ -130,7 +130,7 @@ func TestDatastorePrefetch(t *testing.T) {
 	values[3] = []byte{8, 9, 0}
 
 	//policy := policy.(1234, 1.0)
-	encoder := func(_ string, v any) []byte { return codec.Bytes(v.([]byte)).Encode() }
+	encoder := func(_ string, v any) ([]byte, error) { return codec.Bytes(v.([]byte)).Encode(), nil }
 	decoder := func(_ string, data []byte, _ any) any { return codec.Bytes("").Decode(data) }
 
 	// if err := fileDB.BatchSet(keys, values); err != nil {
@@ -176,7 +176,7 @@ func TestAsyncCommitter(t *testing.T) {
 	values[3] = []byte{8, 9, 0}
 
 	//policy := policy.(1234, 1.0)
-	encoder := func(_ string, v any) []byte { return codec.Bytes(v.([]byte)).Encode() }
+	encoder := func(_ string, v any) ([]byte, error) { return codec.Bytes(v.([]byte)).Encode(), nil }
 	decoder := func(_ string, data []byte, _ any) any { return codec.Bytes("").Decode(data) }
 
 	// if err := fileDB.BatchSet(keys, values); err != nil {
