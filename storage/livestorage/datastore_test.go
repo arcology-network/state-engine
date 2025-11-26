@@ -39,8 +39,8 @@ func TestDatastoreBasic(t *testing.T) {
 	keys := []string{"123", "456", "789"}
 	values := [][]byte{{1, 2, 3}, {4, 5, 6}, {5, 5, 5}}
 
-	encoder := func(k string, v any) []byte {
-		return codec.Bytes(v.([]byte)).Encode()
+	encoder := func(k string, v any) ([]byte, error) {
+		return codec.Bytes(v.([]byte)).Encode(), nil
 	}
 
 	decoder := func(_ string, data []byte, _ any) any {

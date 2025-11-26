@@ -52,13 +52,11 @@ func (this *ReadonlyClient) Get(key string) ([]byte, error) {
 		if err != nil {
 			return []byte{}, err
 		}
-		bytes := this.localStore.Encoder(nil)(key, v)
-
-		return bytes, err
+		return this.localStore.Encoder(nil)(key, v)
 	} else {
 		base, err := url.Parse(this.addr)
 		if err != nil {
-			return nil, errors.New("Error: The website is unreachable !")
+			return nil, errors.New("State-engine ReadonlyClient Error: The website is unreachable !")
 		}
 
 		base.Path = this.path
