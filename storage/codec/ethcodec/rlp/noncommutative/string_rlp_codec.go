@@ -30,9 +30,9 @@ func (this *String) Encode() ([]byte, error) {
 }
 
 func (this *String) Decode(buffer []byte) any {
-	var v String
+	var v noncommutative.String
 	if err := rlp.DecodeBytes(buffer, &v); err != nil {
 		panic("Failed to decode string")
 	}
-	return &v.String
+	return &v
 }
