@@ -62,8 +62,8 @@ import (
 type EthWorldState struct {
 	worldStateTrie *ethmpt.Trie
 
-	// accountCacheEnabled bool
-	accountCache map[ethcommon.Address]*Account // Account cache holds the accountCache that are being accessed in the current cycle.
+	accountCacheEnabled bool
+	accountCache        map[ethcommon.Address]*Account // Account cache holds the accountCache that are being accessed in the current cycle.
 
 	backend *EthShardDB
 	dbErr   error
@@ -360,8 +360,8 @@ func (this *EthWorldState) Query(string, func(string, string) bool) ([]string, [
 	return nil, nil, nil
 }
 
-// func (this *EthWorldState) EnableAccountCache()                         { this.accountCacheEnabled = true }
-// func (this *EthWorldState) DisableAccountCache()                        { this.accountCacheEnabled = false }
+func (this *EthWorldState) EnableAccountCache()                          { this.accountCacheEnabled = true }
+func (this *EthWorldState) DisableAccountCache()                         { this.accountCacheEnabled = false }
 func (this *EthWorldState) AccountCache() map[ethcommon.Address]*Account { return this.accountCache }
 func (this *EthWorldState) Clear()                                       {}
 
