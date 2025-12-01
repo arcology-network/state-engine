@@ -22,6 +22,7 @@ import (
 
 	"github.com/VictoriaMetrics/fastcache"
 	"github.com/arcology-network/common-lib/exp/slice"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -36,7 +37,7 @@ import (
 
 // EthStroageBackend represents an Ethereum account with its associated
 // storage trie and underlying databases.
-type EthShardDB struct {
+type EthShardTrieDB struct {
 	mainTrieDB   *tridb.Database    // main ETH trie db
 	mainDBConfig *hashdb.Config     // config for the main ETH trie db
 	diskShardDBs [16]ethdb.Database // 16 LevelDB shards
@@ -44,9 +45,9 @@ type EthShardDB struct {
 	err          error
 }
 
-// NewEthShardMemDB creates a new EthShardDB with in-memory databases for both
+// NewEthShardTrieMemDB creates a new EthShardTrieDB with in-memory databases for both
 // the main trie and the shard databases.
-func NewEthShardMemDB(mainTrieDbConfig *hashdb.Config) *EthShardDB {
+func NewEthShardTrieMemDB(mainTrieDbConfig *hashdb.Config) *EthShardTrieDB {
 	diskdbs := [16]ethdb.Database{}
 	slice.Fill(diskdbs[:], rawdb.NewMemoryDatabase())
 	db := triedb.NewParallelDatabase(diskdbs, nil)
@@ -54,7 +55,7 @@ func NewEthShardMemDB(mainTrieDbConfig *hashdb.Config) *EthShardDB {
 	if mainTrieDbConfig == nil {
 		mainTrieDbConfig = &hashdb.Config{CleanCacheSize: 1024 * 1024 * 100} // 100MB of the shared cache
 	}
-	return &EthShardDB{
+	return &EthShardTrieDB{
 		mainDBConfig: mainTrieDbConfig,
 		mainTrieDB:   db,
 		diskShardDBs: diskdbs,
@@ -63,9 +64,9 @@ func NewEthShardMemDB(mainTrieDbConfig *hashdb.Config) *EthShardDB {
 	}
 }
 
-// NewEthShardLvlDB creates a new EthShardDB with LevelDB databases for the
+// NewEthShardLvlDB creates a new EthShardTrieDB with LevelDB databases for the
 // shard databases stored in the specified directory.
-func NewEthShardLvlDB(dir string, mainTrieDbConfig *hashdb.Config) (*EthShardDB, error) {
+func NewEthShardLvlDB(dir string, mainTrieDbConfig *hashdb.Config) (*EthShardTrieDB, error) {
 	leveldb, err := rawdb.NewLevelDBDatabase(dir, 256, 16, "temp", false)
 	if err != nil {
 		return nil, err
@@ -78,7 +79,7 @@ func NewEthShardLvlDB(dir string, mainTrieDbConfig *hashdb.Config) (*EthShardDB,
 	}
 
 	mainTrieDB := triedb.NewParallelDatabase(diskdbs, nil)
-	return &EthShardDB{
+	return &EthShardTrieDB{
 		mainDBConfig: mainTrieDbConfig,
 		mainTrieDB:   mainTrieDB,
 		diskShardDBs: diskdbs,
@@ -87,32 +88,38 @@ func NewEthShardLvlDB(dir string, mainTrieDbConfig *hashdb.Config) (*EthShardDB,
 	}, nil
 }
 
+func (this *EthShardTrieDB) MainTrieDB() *tridb.Database { return this.mainTrieDB }
+
 // Selects the appropriate shard database based on the first byte of the key.
-func (this *EthShardDB) ShardFromKey(key string) ethdb.Database {
+func (this *EthShardTrieDB) ShardFromKey(key string) ethdb.Database {
 	if len(key) == 0 {
 		return this.diskShardDBs[0]
 	}
 	return this.diskShardDBs[key[0]>>4]
 }
 
-func (this *EthShardDB) commitTrieToDB(trie *ethmpt.Trie, block uint64) (*ethmpt.Trie, error) {
+// Commit finalizes the trie and persists the changes to the underlying databases.
+func (this *EthShardTrieDB) Commit(trie *ethmpt.Trie, block uint64) (common.Hash, *ethmpt.Trie, error) {
 	root, nodes, err := trie.Commit(false) // Finalized the trie
 	if err != nil {
-		return nil, errors.Join(errors.New("trie.Commit:"), err)
+		return common.Hash{}, nil, errors.Join(errors.New("trie.Commit:"), err)
 	}
+
 	// this.mainTrieDB
 	if nodes != nil {
 		if err := this.mainTrieDB.Update(root, types.EmptyRootHash, block, trienode.NewWithNodeSet(nodes), nil); err != nil { // Move to DB dirty node set
-			return nil, errors.Join(errors.New("ethdb.Update:"), err)
+			return common.Hash{}, nil, errors.Join(errors.New("ethdb.Update:"), err)
 		}
 
 		if err := this.mainTrieDB.Commit(root, false); err != nil {
-			return nil, errors.Join(errors.New("ethdb.Commit:"), err)
+			return common.Hash{}, nil, errors.Join(errors.New("ethdb.Commit:"), err)
 		}
 	}
+
+	// Create a new trie for further updates.
 	newTrie, err := ethmpt.NewParallel(ethmpt.TrieID(root), this.mainTrieDB)
 	if err != nil {
 		err = errors.Join(errors.New("ethmpt.NewParallel:"), err)
 	}
-	return newTrie, err
+	return root, newTrie, err
 }

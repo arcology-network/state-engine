@@ -139,13 +139,13 @@ func (this *StateCache) SetReadOnlyBackend(backend crdtcommon.ReadOnlyStore) *St
 	return this
 }
 
-func (this *StateCache) GetStateVersion() uint64        { return this.stateVersion }
-func (this *StateCache) SetStateVersion(version uint64) { this.stateVersion = version }
+func (this *StateCache) GetVersion() uint64        { return this.stateVersion }
+func (this *StateCache) SetVersion(version uint64) { this.stateVersion = version }
 
 func (this *StateCache) AddToDict(v *statecell.StateCell)        { this.localCells[*v.GetPath()] = v }
 func (this *StateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore { return this.readonlyBackend }
 func (this *StateCache) Cache() *map[string]*statecell.StateCell { return &this.localCells }
-func (this *StateCache) Preload([]byte, uint64) any {
+func (this *StateCache) Preload([]byte) any {
 	panic("Not implemented yet")
 } // Preload from the underlying storage
 
@@ -269,8 +269,8 @@ func (this *StateCache) Write(tx uint64, path string, newVal any, args ...any) (
 // the parent path is missing and the transaction is not SYSTEM.
 func (this *StateCache) write(tx uint64, path string, value any) (*statecell.StateCell, error) {
 	parentPath, _ := statecommon.GetParentPath(path)
-	cell := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil)                                // Default cell wrapper
-	if this.IfExists(parentPath, statecommon.LATEST_STATE_VERSION) || tx == statecommon.SYSTEM { // The parent path exists or to inject the path directly
+	cell := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default cell wrapper
+	if this.IfExists(parentPath) || tx == statecommon.SYSTEM {    // The parent path exists or to inject the path directly
 		var err error
 		var inCache bool
 
@@ -305,7 +305,7 @@ func (this *StateCache) write(tx uint64, path string, value any) (*statecell.Sta
 
 // Get the raw value directly WITHOUT tracking the accessing record.
 // Users need to count access themselves.
-func (this *StateCache) Retrieve(path string, T any, _ uint64) (any, error) {
+func (this *StateCache) Retrieve(path string, T any) (any, error) {
 	typedv, _, _ := this.LookupForRead(statecommon.SYSTEM, path, T, nil)
 	if typedv == nil || typedv.(crdtcommon.Type).IsDeltaApplied() {
 		return typedv, nil
@@ -332,15 +332,15 @@ func (this *StateCache) Retrieve(path string, T any, _ uint64) (any, error) {
 func (this *StateCache) LoadFromCommitted(tx uint64, path string, T any) *statecell.StateCell {
 	var typedv any
 	if readonlyBackend := this.ReadOnlyStore(); readonlyBackend != nil {
-		typedv, _ = readonlyBackend.Retrieve(path, T, this.stateVersion) // The readonlyBackend could also be another instance of StateCache.
+		typedv, _ = readonlyBackend.Retrieve(path, T) // The readonlyBackend could also be another instance of StateCache.
 	}
 	return this.NewStateCell().Init(tx, path, 0, 0, 0, typedv, typedv != nil)
 }
 
 // This function specifically retrieves the value from the readonlyBackend without any tracking.
-func (this *StateCache) ReadStorage(key string, T any, version uint64) (any, error) {
+func (this *StateCache) ReadStorage(key string, T any) (any, error) {
 	if this.readonlyBackend != nil {
-		return this.readonlyBackend.ReadStorage(key, T, version)
+		return this.readonlyBackend.ReadStorage(key, T)
 	}
 	return nil, errors.New("Error: The readonlyBackend is nil")
 }
@@ -380,7 +380,7 @@ func (this *StateCache) GetIfCached(path string) (any, bool) {
 
 // Check if the path exists in the writecache or the readonlyBackend.
 // No access count is recorded. Only for internal use. Not exposed to the public API.
-func (this *StateCache) IfExists(path string, _ uint64) bool {
+func (this *StateCache) IfExists(path string) bool {
 	// Any path shorter than the ETH_ACCOUNT_PREFIX is a system path.
 	if statecommon.ETH_ACCOUNT_PREFIX_LENGTH >= len(path) {
 		return true
@@ -394,7 +394,7 @@ func (this *StateCache) IfExists(path string, _ uint64) bool {
 		return false
 	}
 
-	flag := this.readonlyBackend.IfExists(path, statecommon.LATEST_STATE_VERSION) //this.RetrieveShallow(path, nil) != nil
+	flag := this.readonlyBackend.IfExists(path) //this.RetrieveShallow(path, nil) != nil
 	return flag
 }
 

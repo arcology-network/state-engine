@@ -61,11 +61,11 @@ type Account struct {
 	trieDirty   bool
 
 	err     error
-	backend *EthShardDB
+	backend *EthShardTrieDB
 }
 
 // The diskdbs need to able to handle concurrent accesses themselve
-func NewAccount(addr ethcommon.Address, backend *EthShardDB, state types.StateAccount) *Account {
+func NewAccount(addr ethcommon.Address, backend *EthShardTrieDB, state types.StateAccount) *Account {
 	return &Account{
 		addr:         addr,
 		trieDirty:    false,
@@ -75,7 +75,7 @@ func NewAccount(addr ethcommon.Address, backend *EthShardDB, state types.StateAc
 }
 
 // The diskdbs need to able to handle concurrent accesses themselve
-func NewAccountWithSharedCache(addr ethcommon.Address, backend *EthShardDB, state types.StateAccount) *Account {
+func NewAccountWithSharedCache(addr ethcommon.Address, backend *EthShardTrieDB, state types.StateAccount) *Account {
 	trie, err := LoadTrie(backend.mainTrieDB, state.Root)
 	return &Account{
 		addr:        addr,
@@ -320,7 +320,7 @@ func (*Account) Decode(buffer []byte) *Account {
 func (this *Account) Commit(block uint64) error {
 	var err error
 	if this.trieDirty {
-		this.storageTrie, err = this.backend.commitTrieToDB(this.storageTrie, block) // Commit the change to the storage trie.
+		_, this.storageTrie, err = this.backend.Commit(this.storageTrie, block) // Commit the change to the storage trie.
 		this.trieDirty = false
 	}
 	return err // Write to DB

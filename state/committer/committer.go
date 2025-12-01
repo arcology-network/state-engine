@@ -20,10 +20,10 @@ package statestore
 
 import (
 	"github.com/arcology-network/common-lib/common"
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	indexer "github.com/arcology-network/common-lib/storage/indexer"
 	platform "github.com/arcology-network/state-engine/common"
-	stgcommon "github.com/arcology-network/state-engine/common"
 	cache "github.com/arcology-network/state-engine/state/cache"
 
 	mapi "github.com/arcology-network/common-lib/exp/map"
@@ -42,13 +42,13 @@ import (
 */
 
 type StateCommitter struct {
-	readonlyStore stgcommon.ReadOnlyStore
+	readonlyStore crdtcommon.ReadOnlyStore
 	platform      *platform.Platform
 
-	writers []stgcommon.Writer[*statecell.StateCell] // db writers
+	writers []crdtcommon.Writer[*statecell.StateCell] // db writers
 
-	syncWriters  []stgcommon.Writer[*statecell.StateCell] // db writers that need to be synchronized
-	asyncWriters []stgcommon.Writer[*statecell.StateCell] // db writer that is used for asynchronous commit
+	syncWriters  []crdtcommon.Writer[*statecell.StateCell] // db writers that need to be synchronized
+	asyncWriters []crdtcommon.Writer[*statecell.StateCell] // db writer that is used for asynchronous commit
 
 	byPath *indexer.UnorderedIndexer[string, *statecell.StateCell, []*statecell.StateCell]
 	byTxID *indexer.UnorderedIndexer[uint64, *statecell.StateCell, []*statecell.StateCell]
@@ -60,7 +60,7 @@ type StateCommitter struct {
 // A Committable store is a pair of an index and a store. The index is used to index the input transitions as they are
 // received, and the store is used to commit the indexed transitions. Since multiple store can share the same index, each
 // CommittableStore is an indexer and a list of Committable stores.
-func NewStateCommitter(readonlyStore stgcommon.ReadOnlyStore, writers []stgcommon.Writer[*statecell.StateCell]) *StateCommitter {
+func NewStateCommitter(readonlyStore crdtcommon.ReadOnlyStore, writers []crdtcommon.Writer[*statecell.StateCell]) *StateCommitter {
 	committer := &StateCommitter{
 		readonlyStore: readonlyStore,
 		platform:      platform.NewPlatform(),
@@ -71,7 +71,7 @@ func NewStateCommitter(readonlyStore stgcommon.ReadOnlyStore, writers []stgcommo
 	}
 
 	// Filter the writers into synchronous first.
-	committer.syncWriters = slice.MoveIf(&writers, func(_ int, v stgcommon.Writer[*statecell.StateCell]) bool {
+	committer.syncWriters = slice.MoveIf(&writers, func(_ int, v crdtcommon.Writer[*statecell.StateCell]) bool {
 		return v.IsSync()
 	})
 
@@ -88,8 +88,8 @@ func (this *StateCommitter) New(args ...any) *StateCommitter {
 }
 
 // Importer returns the importer of the StateCommitter.
-func (this *StateCommitter) Store() stgcommon.ReadOnlyStore { return this.readonlyStore }
-func (this *StateCommitter) SetStore(store stgcommon.ReadOnlyStore) { // Testing only
+func (this *StateCommitter) Store() crdtcommon.ReadOnlyStore { return this.readonlyStore }
+func (this *StateCommitter) SetStore(store crdtcommon.ReadOnlyStore) { // Testing only
 	this.readonlyStore = store
 }
 
@@ -173,7 +173,7 @@ func (this *StateCommitter) Precommit(txs []uint64) *StateCommitter {
 // Only the global write cache needs to be synchronized before the next precommit or commit.
 func (this *StateCommitter) SyncPrecommit() {
 	slice.ParallelForeach(this.writers, len(this.writers),
-		func(i int, writer *stgcommon.Writer[*statecell.StateCell]) {
+		func(i int, writer *crdtcommon.Writer[*statecell.StateCell]) {
 			// Eth storage only serves user API enquiries. It has nothing to do with the
 			// transitions execution. So we do not need to precommit it synchronously.
 			if !common.IsType[*ethstorage.EthStorageWriter](*writer) {
@@ -185,7 +185,7 @@ func (this *StateCommitter) SyncPrecommit() {
 // Only the global write cache needs to be synchronized before the next precommit or commit.
 func (this *StateCommitter) AsyncPrecommit() {
 	slice.ParallelForeach(this.writers, len(this.writers),
-		func(_ int, writer *stgcommon.Writer[*statecell.StateCell]) {
+		func(_ int, writer *crdtcommon.Writer[*statecell.StateCell]) {
 			if !common.IsType[*cache.ExecutionCacheWriter](*writer) {
 				(*writer).Precommit(false)
 			}
@@ -205,7 +205,7 @@ func (this *StateCommitter) DebugCommit(blockNum uint64) *StateCommitter {
 // For the time sensitive writers, do sync commit first, like the live cache.
 func (this *StateCommitter) SyncCommit(blockNum uint64) {
 	slice.ParallelForeach(this.syncWriters, len(this.syncWriters),
-		func(_ int, writer *stgcommon.Writer[*statecell.StateCell]) {
+		func(_ int, writer *crdtcommon.Writer[*statecell.StateCell]) {
 			(*writer).Commit(blockNum)
 		})
 }
@@ -214,7 +214,7 @@ func (this *StateCommitter) SyncCommit(blockNum uint64) {
 // For the time insensitive writers, do async commit later, like the eth storage.
 func (this *StateCommitter) AsyncCommit(blockNum uint64) {
 	slice.ParallelForeach(this.asyncWriters, len(this.asyncWriters),
-		func(_ int, writer *stgcommon.Writer[*statecell.StateCell]) {
+		func(_ int, writer *crdtcommon.Writer[*statecell.StateCell]) {
 			(*writer).Commit(blockNum)
 		})
 }

@@ -91,7 +91,7 @@ func (this *StateCache) Peek(path string, T any) (any, any, uint64) {
 
 // This function looks up the committed value in the DB instead of the cache.
 func (this *StateCache) PeekCommitted(path string, T any) (any, uint64) {
-	v, _ := this.readonlyBackend.ReadStorage(path, T, stgcommon.LATEST_STATE_VERSION)
+	v, _ := this.readonlyBackend.ReadStorage(path, T)
 	return v, 0
 }
 

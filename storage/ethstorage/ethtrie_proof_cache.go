@@ -53,7 +53,7 @@ func (this *MerkleProofCache) GetProofProvider(rootHash [32]byte) (*ProofProvide
 
 	merkle, _ := this.merkleDict[rootHash]
 	if merkle == nil {
-		datastore, err := LoadEthDataStore(this.db, rootHash)
+		datastore, err := LoadEthTrieByRoot(this.db, rootHash)
 		if err != nil {
 			return nil, err
 		}

@@ -25,7 +25,6 @@ import (
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	slice "github.com/arcology-network/common-lib/exp/slice"
-	statecommon "github.com/arcology-network/state-engine/common"
 )
 
 const (
@@ -79,12 +78,12 @@ func (this *ShardedStateCache) Write(tx uint64, path string, value interface{}) 
 // 	return this.caches[this.hasher(path)%NUM_SHARDS].GetIfCached(path)
 // }
 
-func (this *ShardedStateCache) Retrieve(path string, T any, version uint64) (interface{}, error) {
-	return this.caches[this.hasher(path)%NUM_SHARDS].Retrieve(path, T, version)
+func (this *ShardedStateCache) Retrieve(path string, T any) (interface{}, error) {
+	return this.caches[this.hasher(path)%NUM_SHARDS].Retrieve(path, T)
 }
 
-func (this *ShardedStateCache) IfExists(path string, _ uint64) bool {
-	return this.caches[this.hasher(path)%NUM_SHARDS].IfExists(path, statecommon.LATEST_STATE_VERSION)
+func (this *ShardedStateCache) IfExists(path string) bool {
+	return this.caches[this.hasher(path)%NUM_SHARDS].IfExists(path)
 }
 
 func (this *ShardedStateCache) Import(transitions []*statecell.StateCell) *ShardedStateCache {

@@ -30,10 +30,11 @@ import (
 type ReadonlyClient struct {
 	addr       string
 	path       string
+	version    uint64 // State version
 	localStore *datastore.LiveStorage
 }
 
-func NewReadonlyClient(addr string, path string, args ...interface{}) *ReadonlyClient {
+func NewReadonlyClient(addr string, path string, args ...any) *ReadonlyClient {
 	readonlyClient := &ReadonlyClient{
 		addr: addr,
 		path: path,
@@ -44,6 +45,9 @@ func NewReadonlyClient(addr string, path string, args ...interface{}) *ReadonlyC
 	}
 	return readonlyClient
 }
+
+// func (this *ReadonlyClient) GetStateVersion() uint64        { return this.version }
+// func (this *ReadonlyClient) SetStateVersion(version uint64) { this.version = version }
 
 // Get from the server connected
 func (this *ReadonlyClient) Get(key string) ([]byte, error) {

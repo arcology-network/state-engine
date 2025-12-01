@@ -39,7 +39,7 @@ type ProofProvider struct {
 }
 
 func NewProofProvider(ethdb *tridb.Database, root [32]byte) (*ProofProvider, error) {
-	store, err := LoadEthDataStore(ethdb, root)
+	store, err := LoadEthTrieByRoot(ethdb, root)
 	if err != nil {
 		return nil, err
 	}

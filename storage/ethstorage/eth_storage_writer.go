@@ -55,7 +55,8 @@ func (this *EthStorageWriter) Precommit(isSync bool) {
 	// Account cache holds the accounts that are being updated in the current block.
 	// TODO: Need to check if this is necessary or could be moved to the import phase instead.
 	slice.Foreach(this.EthIndexer.dirtyAccounts, func(_ int, pair **Account) {
-		this.ethStore.accountCache[(**pair).Address()] = (*pair) // Add the account to the cache
+		// Add the account to the account cache for quick lookup.
+		this.ethStore.accountCache[(**pair).Address()] = (*pair)
 	})
 
 	slice.ParallelForeach(accounts, runtime.NumCPU(), func(i int, acctTrans **associative.Pair[*Account, []*statecell.StateCell]) {

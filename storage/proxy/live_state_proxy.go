@@ -30,6 +30,7 @@ import (
 	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
 	livebackend "github.com/arcology-network/state-engine/storage/execstorage/livebackend"
 	livecache "github.com/arcology-network/state-engine/storage/execstorage/livecache"
+	"github.com/ethereum/go-ethereum/triedb/hashdb"
 
 	arcocodec "github.com/arcology-network/state-engine/storage/codec/arcocodec"
 )
@@ -52,6 +53,7 @@ type StorageProxy struct {
 }
 
 // Cache may also have its storeage, this is the cache only store proxy, no storage.
+// Used for testing and debugging.
 func NewCacheOnlyStoreProxy() *StorageProxy {
 	proxy := &StorageProxy{
 		platform:   statecommon.NewPlatform(),
@@ -73,11 +75,11 @@ func NewMemDBStoreProxy() *StorageProxy {
 	return proxy
 }
 
-func NewLevelDBStoreProxy(ethDBPath, execDBPath string) *StorageProxy {
+func NewLevelDBStoreProxy(ethDBPath, execDBPath string, cacheCap uint64, cacheConfig *hashdb.Config) *StorageProxy {
 	proxy := &StorageProxy{
 		platform:   statecommon.NewPlatform(),
-		ethStorage: ethstg.NewLevelDBDataStore(ethDBPath), //ethstg.NewParallelEthMemDataStore(),
-		execCache:  livecache.NewLiveCache(math.MaxUint64),
+		ethStorage: ethstg.NewLevelDBDataStore(ethDBPath, cacheConfig), //ethstg.NewParallelEthMemDataStore(),
+		execCache:  livecache.NewLiveCache(cacheCap),
 		execBackend: livebackend.NewLiveStorage(
 			// memdb.NewMemoryDB(),
 			ccbadger.NewBadgerDB(execDBPath+"_badager"),
@@ -104,27 +106,27 @@ func (this *StorageProxy) ExecStore() *livebackend.LiveStorage { return this.exe
 func (this *StorageProxy) EthStore() *ethstg.EthWorldState     { return this.ethStorage }  // Eth storage
 
 // Check if the key exists in the execution storage.
-func (this *StorageProxy) ReadStorage(key string, T any, version uint64) (any, error) {
+func (this *StorageProxy) ReadStorage(key string, T any) (any, error) {
 	if v, ok := this.execCache.Get(key); ok { // Check the cache first
 		return v, nil
 	}
-	return this.execBackend.Retrieve(key, T, version)
+	return this.execBackend.Retrieve(key, T)
 }
 
-func (this *StorageProxy) Retrieve(key string, v any, version uint64) (any, error) {
-	return this.ReadStorage(key, v, version)
+func (this *StorageProxy) Retrieve(key string, v any) (any, error) {
+	return this.ReadStorage(key, v)
 }
 
-func (this *StorageProxy) Preload(data []byte, version uint64) any {
+func (this *StorageProxy) Preload(data []byte) any {
 	return this.ethStorage.Preload(data)
 }
 
 // Check if the key exists in the source, which can be a cache or a storage.
-func (this *StorageProxy) IfExists(key string, version uint64) bool {
+func (this *StorageProxy) IfExists(key string) bool {
 	if _, ok := this.execCache.Get(key); ok { // Check the cache first
 		return true
 	}
-	return this.execBackend.IfExists(key, version)
+	return this.execBackend.IfExists(key)
 }
 
 // Directly inject the value into the storage, on for initializing concurrent container storage
@@ -133,8 +135,8 @@ func (this *StorageProxy) Inject(key string, v any) error {
 }
 
 // Get the stores that can be
-func (this *StorageProxy) GetWriters() []statecommon.Writer[*statecell.StateCell] {
-	return []statecommon.Writer[*statecell.StateCell]{
+func (this *StorageProxy) GetWriters() []crdtcommon.Writer[*statecell.StateCell] {
+	return []crdtcommon.Writer[*statecell.StateCell]{
 		livecache.NewLiveCacheWriter(this.execCache, -1, this.RemoveTransients),
 		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.EthOnly),
 		livebackend.NewLiveStorageWriter(this.execBackend, -1, this.RemoveTransients),
@@ -142,14 +144,14 @@ func (this *StorageProxy) GetWriters() []statecommon.Writer[*statecell.StateCell
 }
 
 // Get the stores that can be
-func (this *StorageProxy) SyncWriters() []statecommon.Writer[*statecell.StateCell] {
-	return []statecommon.Writer[*statecell.StateCell]{
+func (this *StorageProxy) SyncWriters() []crdtcommon.Writer[*statecell.StateCell] {
+	return []crdtcommon.Writer[*statecell.StateCell]{
 		livecache.NewLiveCacheWriter(this.execCache, -1, this.RemoveTransients),
 	}
 }
 
-func (this *StorageProxy) AsyncWriters() []statecommon.Writer[*statecell.StateCell] {
-	return []statecommon.Writer[*statecell.StateCell]{
+func (this *StorageProxy) AsyncWriters() []crdtcommon.Writer[*statecell.StateCell] {
+	return []crdtcommon.Writer[*statecell.StateCell]{
 		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.EthOnly),
 		livebackend.NewLiveStorageWriter(this.execBackend, -1, this.RemoveTransients),
 	}

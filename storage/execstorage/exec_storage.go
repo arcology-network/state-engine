@@ -20,8 +20,8 @@ package execstorage
 import (
 	"math"
 
-	livestg "github.com/arcology-network/storage-committer/storage/execstorage/livebackend"
-	livecache "github.com/arcology-network/storage-committer/storage/execstorage/livecache"
+	livebackend "github.com/arcology-network/state-engine/storage/execstorage/livebackend"
+	livecache "github.com/arcology-network/state-engine/storage/execstorage/livecache"
 
 	ccbadger "github.com/arcology-network/common-lib/storage/badger"
 	"github.com/arcology-network/common-lib/storage/memdb"
@@ -37,15 +37,15 @@ import (
 //   - LiveCache    : object-level cache (decoded)
 //   - LiveStorage  : encoded-byte cache + persistent backend
 type ExecStorage struct {
-	cache   *livecache.LiveCache // Object-level speculative execution cache
-	storage *livestg.LiveStorage // storage is the persistent execution-state backend.
+	cache   *livecache.LiveCache     // Object-level speculative execution cache
+	storage *livebackend.LiveStorage // storage is the persistent execution-state backend.
 }
 
 // NewCacheOnlyExecStorage creates an execution storage with only an in-memory cache.
 func NewCacheOnlyExecStorage(cacheSize uint64) *ExecStorage {
 	return &ExecStorage{
 		cache: livecache.NewLiveCache(cacheSize),
-		storage: livestg.NewLiveStorage(
+		storage: livebackend.NewLiveStorage(
 			nil,
 			arcocodec.Codec{}.Encode,
 			arcocodec.Codec{}.Decode,

@@ -20,9 +20,12 @@ package ethstorage
 import (
 	// "errors"
 
+	"errors"
+
 	"github.com/arcology-network/common-lib/common"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rlp"
 	ethmpt "github.com/ethereum/go-ethereum/trie"
 
 	// "github.com/ethereum/go-ethereum/core/types"
@@ -56,4 +59,19 @@ func VerifyProof(rootHash ethcommon.Hash, proof []string, addr []byte) {
 	}
 }
 
-// Move to EthShardDB
+func GetFromTrie[T any](trie *ethmpt.Trie, key []byte) (T, error) {
+	acctHash := crypto.Keccak256(key) // Hash the key string
+	buffer, err := trie.Get(acctHash)
+
+	var result T
+	if err != nil {
+		return result, err
+	}
+
+	if len(buffer) == 0 {
+		return result, errors.New("key not found in trie")
+	}
+
+	err = rlp.DecodeBytes(buffer, &result)
+	return result, err
+}
