@@ -24,6 +24,7 @@ import (
 
 	"github.com/arcology-network/common-lib/codec"
 	filedb "github.com/arcology-network/common-lib/storage/filedb"
+	statecommon "github.com/arcology-network/state-engine/common"
 )
 
 var (
@@ -60,12 +61,12 @@ func TestDatastoreBasic(t *testing.T) {
 		t.Error(err)
 	}
 
-	v, _ := store.Retrieve(keys[0], nil)
+	v, _ := store.Retrieve(keys[0], nil, statecommon.LATEST_STATE_VERSION)
 	if string(v.([]byte)) != string(values[0]) {
 		t.Error("Error: Values mismatched !")
 	}
 
-	v, _ = store.Retrieve(keys[1], nil)
+	v, _ = store.Retrieve(keys[1], nil, statecommon.LATEST_STATE_VERSION)
 	if string(v.([]byte)) != string(values[1]) {
 		t.Error("Error: Values mismatched !")
 	}
@@ -101,12 +102,12 @@ func TestDatastorePersistentStorage(t *testing.T) {
 		t.Error(err)
 	}
 
-	v, _ := store.Retrieve(keys[0], nil)
+	v, _ := store.Retrieve(keys[0], nil, statecommon.LATEST_STATE_VERSION)
 	if string(v.([]byte)) != string(values[0]) {
 		t.Error("Error: Values mismatched !")
 	}
 
-	v, _ = store.Retrieve(keys[1], nil)
+	v, _ = store.Retrieve(keys[1], nil, statecommon.LATEST_STATE_VERSION)
 	if string(v.([]byte)) != string(values[1]) {
 		t.Error("Error: Values mismatched !")
 	}
@@ -146,13 +147,13 @@ func TestDatastorePrefetch(t *testing.T) {
 	store.db.BatchSet(keys, values)
 	store.BatchInject(keys, vs)
 
-	v, _ := store.Retrieve(keys[0], nil)
+	v, _ := store.Retrieve(keys[0], nil, statecommon.LATEST_STATE_VERSION)
 
 	if string(v.([]byte)) != string(values[0]) {
 		t.Error("Error: Values mismatched !")
 	}
 
-	v, _ = store.Retrieve(keys[1], nil)
+	v, _ = store.Retrieve(keys[1], nil, statecommon.LATEST_STATE_VERSION)
 	if string(v.([]byte)) != string(values[1]) {
 		t.Error("Error: Values mismatched !")
 	}
@@ -192,13 +193,13 @@ func TestAsyncCommitter(t *testing.T) {
 	store.db.BatchSet(keys, values)
 	store.BatchInject(keys, vs)
 
-	v, _ := store.Retrieve(keys[0], nil)
+	v, _ := store.Retrieve(keys[0], nil, statecommon.LATEST_STATE_VERSION)
 
 	if string(v.([]byte)) != string(values[0]) {
 		t.Error("Error: Values mismatched !")
 	}
 
-	v, _ = store.Retrieve(keys[1], nil)
+	v, _ = store.Retrieve(keys[1], nil, statecommon.LATEST_STATE_VERSION)
 	if string(v.([]byte)) != string(values[1]) {
 		t.Error("Error: Values mismatched !")
 	}

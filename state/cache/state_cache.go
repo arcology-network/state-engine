@@ -15,10 +15,10 @@
  *   limitations under the License.
  */
 
-// write_cache.go provides the implementation of StateCache, a read-only data backend
+// write_cache.go provides the implementation of StateCache, a read-only data readonlyBackend
 // designed for caching key-value pairs in the Arcology Network storage committer module.
 // It supports efficient retrieval, insertion, and management of cached data, including
-// wildcard deletions, memory pooling, and integration with a backend store. The StateCache
+// wildcard deletions, memory pooling, and integration with a readonlyBackend store. The StateCache
 // is optimized for use in concurrent and multi-processor environments.
 //
 // Note: The StateCache itself is read-only; all updates are performed by the committer.
@@ -41,15 +41,14 @@ import (
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	mempool "github.com/arcology-network/common-lib/exp/mempool"
 	slice "github.com/arcology-network/common-lib/exp/slice"
-	stgcommon "github.com/arcology-network/state-engine/common"
-	stgeth "github.com/arcology-network/state-engine/common"
+	statecommon "github.com/arcology-network/state-engine/common"
 )
 
 // StateCache stores the *per-execution* working set of StateCells for a single
 // transaction or execution context.
 //
 // This layer sits between:
-//   - the global committed storage (backend), and
+//   - the global committed storage (readonlyBackend), and
 //   - the per-transaction read/write operations performed during execution.
 //
 // Responsibilities of StateCache:
@@ -67,10 +66,10 @@ import (
 //	wildcard deletion behavior, lazy materialization rules, and conflict
 //	detection invariants.
 type StateCache struct {
-	// backend is the read-only storage interface for accessing *committed*
-	// global state (MPT / flattened DB). Reads fall back to backend when
-	// a path is not found locally. backend must never be mutated here.
-	backend stgcommon.ReadOnlyStore
+	// readonlyBackend is the read-only storage interface for accessing *committed*
+	// global state (MPT / flattened DB). Reads fall back to readonlyBackend when
+	// a path is not found locally. readonlyBackend must never be mutated here.
+	readonlyBackend crdtcommon.ReadOnlyStore
 
 	// localCells stores lazily-materialized StateCells for the current
 	// execution. A cell is added when:
@@ -106,39 +105,50 @@ type StateCache struct {
 	// platform identifies the execution platform (e.g. ETH_PATH). StateCache
 	// may apply platform-specific rules for storage layout, path normalization,
 	// or encoding behavior.
-	platform stgeth.Platform
+	platform statecommon.Platform
 
 	// pool is an object pool for allocating StateCell instances efficiently.
 	// StateCells are created frequently—using an object pool minimizes GC
 	// overhead and reduces allocation churn during execution.
 	pool *mempool.Mempool[*statecell.StateCell]
+
+	// stateVersion tracks the version of the state being accessed or modified.
+	// It is the block number for Ethereum storage.
+	stateVersion uint64
 }
 
 // StateCache holds the per-execution working set of StateCells.
 // This is the local view of state used during transaction execution.
 // It supports lazy materialization, wildcard delete inheritance,
 // and correct conflict detection.
-func NewStateCache(backend stgcommon.ReadOnlyStore, perPage int, numPages int, args ...any) *StateCache {
+func NewStateCache(readonlyBackend crdtcommon.ReadOnlyStore, perPage int, numPages int, args ...any) *StateCache {
 	return &StateCache{
-		backend:                backend,
+		stateVersion:           statecommon.LATEST_STATE_VERSION, // Default to the latest state version
+		readonlyBackend:        readonlyBackend,
 		localCells:             make(map[string]*statecell.StateCell),
 		pendingWildcardDeletes: make([]*associative.Pair[uint64, string], 0),
-		platform:               *stgeth.NewPlatform(),
+		platform:               *statecommon.NewPlatform(),
 		pool: mempool.NewMempool(perPage, numPages, func() *statecell.StateCell {
 			return new(statecell.StateCell)
 		}, (&statecell.StateCell{}).Reset),
 	}
 }
 
-func (this *StateCache) SetReadOnlyBackend(backend stgcommon.ReadOnlyStore) *StateCache {
-	this.backend = backend
+func (this *StateCache) SetReadOnlyBackend(backend crdtcommon.ReadOnlyStore) *StateCache {
+	this.readonlyBackend = backend
 	return this
 }
 
+func (this *StateCache) GetStateVersion() uint64        { return this.stateVersion }
+func (this *StateCache) SetStateVersion(version uint64) { this.stateVersion = version }
+
 func (this *StateCache) AddToDict(v *statecell.StateCell)        { this.localCells[*v.GetPath()] = v }
-func (this *StateCache) ReadOnlyStore() stgcommon.ReadOnlyStore  { return this.backend }
+func (this *StateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore { return this.readonlyBackend }
 func (this *StateCache) Cache() *map[string]*statecell.StateCell { return &this.localCells }
-func (this *StateCache) Preload([]byte) any                      { return nil } //.
+func (this *StateCache) Preload([]byte, uint64) any {
+	panic("Not implemented yet")
+} // Preload from the underlying storage
+
 // Placeholder
 func (this *StateCache) NewStateCell() *statecell.StateCell { return this.pool.New() }
 
@@ -163,7 +173,7 @@ func (this *StateCache) ExistsInParent(path string) bool {
 		return true
 	}
 
-	parentPath, _ := stgcommon.GetParentPath(path) // Get the parent path
+	parentPath, _ := statecommon.GetParentPath(path) // Get the parent path
 	if meta, _, _ := this.LookupOrMaterialize(0, parentPath, new(commutative.Path), nil); meta != nil {
 		childKey := path[len(parentPath):]
 		if ok, _ := meta.(*commutative.Path).Exists(childKey); ok { // Add the path to the parent path
@@ -194,7 +204,7 @@ func (this *StateCache) LookupForRead(tx uint64, path string, T any, do func(*st
 //
 //  1. localCells (already materialized in this cache)
 //  2. wildcard-inherited deletion (lazy materialization)
-//  3. committed storage backend
+//  3. committed storage readonlyBackend
 //
 // It may insert a new StateCell into localCells when a wildcard/container
 // delete implies a *logical* deleted state for this path.
@@ -254,14 +264,13 @@ func (this *StateCache) Write(tx uint64, path string, newVal any, args ...any) (
 	return sizeDif, err
 }
 
-
 // write stores a value in the state cache at the specified path, creating or materializing the associated state cell,
 // ensuring parent metadata is updated when necessary, and propagating transient status from the parent path; it fails if
 // the parent path is missing and the transaction is not SYSTEM.
 func (this *StateCache) write(tx uint64, path string, value any) (*statecell.StateCell, error) {
-	parentPath, _ := stgcommon.GetParentPath(path)
-	cell := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default cell wrapper
-	if this.IfExists(parentPath) || tx == stgcommon.SYSTEM {      // The parent path exists or to inject the path directly
+	parentPath, _ := statecommon.GetParentPath(path)
+	cell := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil)                                // Default cell wrapper
+	if this.IfExists(parentPath, statecommon.LATEST_STATE_VERSION) || tx == statecommon.SYSTEM { // The parent path exists or to inject the path directly
 		var err error
 		var inCache bool
 
@@ -277,7 +286,7 @@ func (this *StateCache) write(tx uint64, path string, value any) (*statecell.Sta
 			// blcc://eth1.0/account/0x123456790/container/ all the sub paths under container will need to check if
 			// their parent path exists. The parent path missing issue actually only happens beyond the context of
 			// the crdt domain. For a crdt container initated using the library api, its parent path always exists.
-			if strings.HasSuffix(parentPath, "/container/") || !this.platform.IsSysPath(parentPath) && tx != stgcommon.SYSTEM {
+			if strings.HasSuffix(parentPath, "/container/") || !this.platform.IsSysPath(parentPath) && tx != statecommon.SYSTEM {
 				_, parentMeta, inCache := this.LookupOrMaterialize(tx, parentPath, new(commutative.Path), this.AddToDict)
 				err = parentMeta.Set(tx, path, cell.Value(), inCache, this)
 			}
@@ -296,8 +305,8 @@ func (this *StateCache) write(tx uint64, path string, value any) (*statecell.Sta
 
 // Get the raw value directly WITHOUT tracking the accessing record.
 // Users need to count access themselves.
-func (this *StateCache) Retrieve(path string, T any) (any, error) {
-	typedv, _, _ := this.LookupForRead(stgcommon.SYSTEM, path, T, nil)
+func (this *StateCache) Retrieve(path string, T any, _ uint64) (any, error) {
+	typedv, _, _ := this.LookupForRead(statecommon.SYSTEM, path, T, nil)
 	if typedv == nil || typedv.(crdtcommon.Type).IsDeltaApplied() {
 		return typedv, nil
 	}
@@ -318,29 +327,29 @@ func (this *StateCache) Retrieve(path string, T any) (any, error) {
 	return typedv.(crdtcommon.Type).New(rawv, nil, nil, min, max), nil // Clone the value
 }
 
-// The load the data from the backend. Since the state is already isCommitted, it is read-only.
+// The load the data from the readonlyBackend. Since the state is already isCommitted, it is read-only.
 // No need to add it to the localCells or keep track of the access.
 func (this *StateCache) LoadFromCommitted(tx uint64, path string, T any) *statecell.StateCell {
 	var typedv any
-	if backend := this.ReadOnlyStore(); backend != nil {
-		typedv, _ = backend.Retrieve(path, T) // The backend could also be another instance of StateCache.
+	if readonlyBackend := this.ReadOnlyStore(); readonlyBackend != nil {
+		typedv, _ = readonlyBackend.Retrieve(path, T, this.stateVersion) // The readonlyBackend could also be another instance of StateCache.
 	}
 	return this.NewStateCell().Init(tx, path, 0, 0, 0, typedv, typedv != nil)
 }
 
-// This function specifically retrieves the value from the backend without any tracking.
-func (this *StateCache) ReadStorage(key string, T any) (any, error) {
-	if this.backend != nil {
-		return this.backend.ReadStorage(key, T)
+// This function specifically retrieves the value from the readonlyBackend without any tracking.
+func (this *StateCache) ReadStorage(key string, T any, version uint64) (any, error) {
+	if this.readonlyBackend != nil {
+		return this.readonlyBackend.ReadStorage(key, T, version)
 	}
-	return nil, errors.New("Error: The backend is nil")
+	return nil, errors.New("Error: The readonlyBackend is nil")
 }
 
 func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
 	_, stcell, _ := this.LookupForRead(tx, path, T, this.AddToDict) // Get the cell wrapper
 
 	// need to check if it is in the memory. If so gas price should be 3 instead.
-	dataSize := stgcommon.MIN_READ_SIZE
+	dataSize := statecommon.MIN_READ_SIZE
 	if typedv := stcell.Value(); typedv != nil {
 		dataSize = typedv.(crdtcommon.Type).MemSize()
 	}
@@ -369,11 +378,11 @@ func (this *StateCache) GetIfCached(path string) (any, bool) {
 	return cell, ok
 }
 
-// Check if the path exists in the writecache or the backend.
+// Check if the path exists in the writecache or the readonlyBackend.
 // No access count is recorded. Only for internal use. Not exposed to the public API.
-func (this *StateCache) IfExists(path string) bool {
+func (this *StateCache) IfExists(path string, _ uint64) bool {
 	// Any path shorter than the ETH_ACCOUNT_PREFIX is a system path.
-	if stgcommon.ETH_ACCOUNT_PREFIX_LENGTH >= len(path) {
+	if statecommon.ETH_ACCOUNT_PREFIX_LENGTH >= len(path) {
 		return true
 	}
 
@@ -381,11 +390,11 @@ func (this *StateCache) IfExists(path string) bool {
 		return v.Value() != nil // If value == nil means either it's been deleted or never existed.
 	}
 
-	if this.backend == nil {
+	if this.readonlyBackend == nil {
 		return false
 	}
 
-	flag := this.backend.IfExists(path) //this.RetrieveShallow(path, nil) != nil
+	flag := this.readonlyBackend.IfExists(path, statecommon.LATEST_STATE_VERSION) //this.RetrieveShallow(path, nil) != nil
 	return flag
 }
 
@@ -519,7 +528,7 @@ func (this *StateCache) Checksum() [32]byte {
 	return statecell.StateCells(values).Checksum()
 }
 
-// Read the value from the backend. This function is used for
+// Read the value from the readonlyBackend. This function is used for
 // GetCommittedState() in Eth interface for gas refund related code.
 func (this *StateCache) ReadCommitted(tx uint64, key string, T any) (any, uint64) {
 	// Just to leave a record for conflict detection. This is different from the original Ethereum implementation.
@@ -527,7 +536,7 @@ func (this *StateCache) ReadCommitted(tx uint64, key string, T any) (any, uint64
 	// previous block or the transactions before the current one. But in the multiprocessor, the isCommitted state
 	// may also come from the parent thread. So we need to leave a record for the conflict detection in case that
 	// threads spawned by multiple parent are trying to access the same path.
-	if v := this.LoadFromCommitted(tx, key, this); v != nil { // Check to see if the path exists in the backend.
+	if v := this.LoadFromCommitted(tx, key, this); v != nil { // Check to see if the path exists in the readonlyBackend.
 		return v.Get(tx, key, nil), 0
 	}
 	return nil, 0

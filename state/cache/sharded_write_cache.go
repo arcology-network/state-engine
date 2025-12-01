@@ -25,7 +25,7 @@ import (
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	slice "github.com/arcology-network/common-lib/exp/slice"
-	intf "github.com/arcology-network/state-engine/common"
+	statecommon "github.com/arcology-network/state-engine/common"
 )
 
 const (
@@ -36,13 +36,13 @@ const (
 // which is responsible for a subset of the data. It can be updated in parallel when a transaction generation
 // is completed. But it isn't thread-safe.
 type ShardedStateCache struct {
-	backend intf.ReadOnlyStore
+	backend crdtcommon.ReadOnlyStore
 	caches  [NUM_SHARDS]*StateCache
 	hasher  func(string) uint64
 	queue   chan *[]*statecell.StateCell
 }
 
-func NewShardedStateCache(backend intf.ReadOnlyStore, perPage int, numPages int, hasher func(string) uint64, args ...interface{}) *ShardedStateCache {
+func NewShardedStateCache(backend crdtcommon.ReadOnlyStore, perPage int, numPages int, hasher func(string) uint64, args ...interface{}) *ShardedStateCache {
 	writeCache := &ShardedStateCache{
 		backend: backend,
 		hasher:  hasher,
@@ -55,8 +55,8 @@ func NewShardedStateCache(backend intf.ReadOnlyStore, perPage int, numPages int,
 	return writeCache
 }
 
-func (this *ShardedStateCache) ReadOnlyStore() intf.ReadOnlyStore { return this.backend }
-func (this *ShardedStateCache) Cache() [NUM_SHARDS]*StateCache    { return this.caches }
+func (this *ShardedStateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore { return this.backend }
+func (this *ShardedStateCache) Cache() [NUM_SHARDS]*StateCache          { return this.caches }
 
 func (this *ShardedStateCache) NewStateCell(k string) *statecell.StateCell {
 	return this.caches[this.hasher(k)].NewStateCell()
@@ -79,12 +79,12 @@ func (this *ShardedStateCache) Write(tx uint64, path string, value interface{}) 
 // 	return this.caches[this.hasher(path)%NUM_SHARDS].GetIfCached(path)
 // }
 
-func (this *ShardedStateCache) Retrieve(path string, T any) (interface{}, error) {
-	return this.caches[this.hasher(path)%NUM_SHARDS].Retrieve(path, T)
+func (this *ShardedStateCache) Retrieve(path string, T any, version uint64) (interface{}, error) {
+	return this.caches[this.hasher(path)%NUM_SHARDS].Retrieve(path, T, version)
 }
 
-func (this *ShardedStateCache) IfExists(path string) bool {
-	return this.caches[this.hasher(path)%NUM_SHARDS].IfExists(path)
+func (this *ShardedStateCache) IfExists(path string, _ uint64) bool {
+	return this.caches[this.hasher(path)%NUM_SHARDS].IfExists(path, statecommon.LATEST_STATE_VERSION)
 }
 
 func (this *ShardedStateCache) Import(transitions []*statecell.StateCell) *ShardedStateCache {

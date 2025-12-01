@@ -56,6 +56,11 @@ const (
 	SELECTOR_LENGTH               = 4                                               // 4 bytes for signature
 	CALLEE_ID_LENGTH              = SHORT_CONTRACT_ADDRESS_LENGTH + SELECTOR_LENGTH // Can be represented as uint64
 
+	// The latest state version for the execution storage, This is actually a placeholder only.
+	// since the execution storage always deals with the latest state. It only here to unify the interface
+	// with the ETH storage, which needs to the block number for historical state read.
+	LATEST_STATE_VERSION uint64 = math.MaxUint64
+
 	// If the path starts with the following prefixes, it means the path should be persisted to Ethereum storage.
 	ETH_NATIVE_PATH = "/native/"
 

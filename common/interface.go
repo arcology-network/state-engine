@@ -21,19 +21,21 @@ import (
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 )
 
-type Writer[T any] interface {
-	Import([]T)
-	Precommit(bool)
-	Commit(uint64)
-	IsSync() bool // If the writer is synchronous, it will block until the commit is done.
-	Name() string
-}
+// DB Writer interface for writing data to storage.
+// type Writer[T any] interface {
+// 	Import([]T)
+// 	Precommit(bool)
+// 	Commit(uint64)
+// 	IsSync() bool // If the writer is synchronous, it will block until the commit is done.
+// 	Name() string
+// }
 
-type ReadOnlyStore interface {
-	IfExists(string) bool                 // Check if the key exists in the source, which can be a cache or a storage.
-	ReadStorage(string, any) (any, error) // Get from persistent storage.
-	Retrieve(string, any) (any, error)
-	Preload([]byte) any
-}
+// ReadOnlyStore interface for reading data from storage.
+// type ReadOnlyStore interface {
+// 	IfExists(string, uint64) bool                 // Check if the key exists in the source, which can be a cache or a storage.
+// 	ReadStorage(string, any, uint64) (any, error) // Get from persistent storage directly.
+// 	Retrieve(string, any, uint64) (any, error)    // Get from cache or persistent storage, with cache lookup first.
+// 	Preload([]byte, uint64) any
+// }
 
 type Hasher func(crdtcommon.Type) []byte

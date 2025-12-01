@@ -25,6 +25,7 @@ import (
 	slice "github.com/arcology-network/common-lib/exp/slice"
 	cache "github.com/arcology-network/common-lib/storage/cache"
 	commonintf "github.com/arcology-network/common-lib/storage/interface"
+	statecommon "github.com/arcology-network/state-engine/common"
 )
 
 type LiveStorage struct {
@@ -67,14 +68,14 @@ func (this *LiveStorage) Cache(any) any                                 { return
 func (this *LiveStorage) Encoder(any) func(string, any) ([]byte, error) { return this.encoder }
 func (this *LiveStorage) Decoder(any) func(string, []byte, any) any     { return this.decoder }
 
-func (this *LiveStorage) GetDB() commonintf.PersistentStorage   { return this.db }
-func (this *LiveStorage) SetDB(db commonintf.PersistentStorage) { this.db = db }
+func (this *LiveStorage) GetBackend() commonintf.PersistentStorage   { return this.db }
+func (this *LiveStorage) SetBackend(db commonintf.PersistentStorage) { this.db = db }
 
 // func (this *LiveStorage) ReadStorage(key string) bool { return this.IfExists(key) }
 
 // No access tracking
-func (this *LiveStorage) IfExists(key string) bool {
-	v, _ := this.Retrieve(key, nil)
+func (this *LiveStorage) IfExists(key string, _ uint64) bool {
+	v, _ := this.Retrieve(key, nil, statecommon.LATEST_STATE_VERSION)
 	return v != nil
 }
 
@@ -95,7 +96,8 @@ func (this *LiveStorage) BatchInject(keys []string, values []any) error {
 	return this.db.BatchSet(keys, encoded)
 }
 
-func (this *LiveStorage) ReadStorage(key string, T any) (any, error) {
+// Get from the underlying storage directly.
+func (this *LiveStorage) ReadStorage(key string, T any, _ uint64) (any, error) {
 	if this.db == nil {
 		return nil, errors.New("Error: DB not found")
 	}
@@ -110,13 +112,14 @@ func (this *LiveStorage) ReadStorage(key string, T any) (any, error) {
 	return nil, err
 }
 
-func (this *LiveStorage) Retrieve(key string, T any) (any, error) {
+// Get from the local cache first, then from the underlying storage.
+func (this *LiveStorage) Retrieve(key string, T any, version uint64) (any, error) {
 	// Read from the local cache first
 	if v, _ := this.cache.Get(key); v != nil {
 		return *v, nil
 	}
 
-	v, err := this.ReadStorage(key, T)
+	v, err := this.ReadStorage(key, T, version)
 	if err == nil && T != nil {
 		this.cache.Set(key, v) //update to the local cache and add all the missing values to the cache
 	}

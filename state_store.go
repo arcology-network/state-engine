@@ -70,8 +70,10 @@ func NewStateStore(backend *proxy.StorageProxy) *StateStore {
 func (this *StateStore) Backend() *proxy.StorageProxy        { return this.backend }
 func (this *StateStore) Cache() *cache.StateCache            { return this.StateCache }
 func (this *StateStore) Import(trans []*statecell.StateCell) { this.StateCommitter.Import(trans) }
-func (this *StateStore) Preload(key []byte) any              { return this.backend.Preload(key) }
-func (this *StateStore) Clear()                              { this.StateCache.Clear() }
+func (this *StateStore) Preload(key []byte, version uint64) any {
+	return this.backend.Preload(key, version)
+}
+func (this *StateStore) Clear() { this.StateCache.Clear() }
 
 func (this *StateStore) GetWriters() []intf.Writer[*statecell.StateCell] {
 	return append([]intf.Writer[*statecell.StateCell]{
