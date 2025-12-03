@@ -115,6 +115,10 @@ type StateCache struct {
 	// stateVersion tracks the version of the state being accessed or modified.
 	// It is the block number for Ethereum storage.
 	stateVersion uint64
+
+	// The serial ID of the state cache, it is the same as the execution unit ID, since
+	// each execution unit has its own state cache.
+	id uint64
 }
 
 // StateCache holds the per-execution working set of StateCells.
@@ -123,6 +127,7 @@ type StateCache struct {
 // and correct conflict detection.
 func NewStateCache(readonlyBackend crdtcommon.ReadOnlyStore, perPage int, numPages int, args ...any) *StateCache {
 	return &StateCache{
+		id:                     0,
 		stateVersion:           statecommon.LATEST_STATE_VERSION, // Default to the latest state version
 		readonlyBackend:        readonlyBackend,
 		localCells:             make(map[string]*statecell.StateCell),
@@ -138,6 +143,9 @@ func (this *StateCache) SetReadOnlyBackend(backend crdtcommon.ReadOnlyStore) *St
 	this.readonlyBackend = backend
 	return this
 }
+
+func (this *StateCache) GetID() uint64   { return this.id }
+func (this *StateCache) SetID(id uint64) { this.id = id }
 
 func (this *StateCache) GetVersion() uint64        { return this.stateVersion }
 func (this *StateCache) SetVersion(version uint64) { this.stateVersion = version }
@@ -252,7 +260,7 @@ func (this *StateCache) LookupOrMaterialize(tx uint64, path string, T any, do fu
 
 // Write applies newVal to path, tracks size delta, and invokes optional callback.
 func (this *StateCache) Write(tx uint64, path string, newVal any, args ...any) (int64, error) {
-	if newVal != nil && newVal.(crdtcommon.Type).TypeID() == uint8(reflect.Invalid) { // Neither a valid replacement nor a delete operation.
+	if newVal != nil && newVal.(crdtcommon.CRDT).TypeID() == uint8(reflect.Invalid) { // Neither a valid replacement nor a delete operation.
 		return 0, errors.New("Error: Unknown data type !")
 	}
 
@@ -307,7 +315,7 @@ func (this *StateCache) write(tx uint64, path string, value any) (*statecell.Sta
 // Users need to count access themselves.
 func (this *StateCache) Retrieve(path string, T any) (any, error) {
 	typedv, _, _ := this.LookupForRead(statecommon.SYSTEM, path, T, nil)
-	if typedv == nil || typedv.(crdtcommon.Type).IsDeltaApplied() {
+	if typedv == nil || typedv.(crdtcommon.CRDT).IsDeltaApplied() {
 		return typedv, nil
 	}
 
@@ -322,9 +330,9 @@ func (this *StateCache) Retrieve(path string, T any) (any, error) {
 	}
 
 	// Make a Deep copy of the original value.
-	rawv, _, _ := typedv.(crdtcommon.Type).Get()
-	min, max := typedv.(crdtcommon.Type).Limits()
-	return typedv.(crdtcommon.Type).New(rawv, nil, nil, min, max), nil // Clone the value
+	rawv, _, _ := typedv.(crdtcommon.CRDT).Get()
+	min, max := typedv.(crdtcommon.CRDT).Limits()
+	return typedv.(crdtcommon.CRDT).New(rawv, nil, nil, min, max), nil // Clone the value
 }
 
 // The load the data from the readonlyBackend. Since the state is already isCommitted, it is read-only.
@@ -351,7 +359,7 @@ func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
 	// need to check if it is in the memory. If so gas price should be 3 instead.
 	dataSize := statecommon.MIN_READ_SIZE
 	if typedv := stcell.Value(); typedv != nil {
-		dataSize = typedv.(crdtcommon.Type).MemSize()
+		dataSize = typedv.(crdtcommon.CRDT).MemSize()
 	}
 	return stcell.Get(tx, path, nil), stcell, dataSize
 }
@@ -361,12 +369,12 @@ func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
 func (this *StateCache) DiffSize(tx uint64, path string, newVal any) int64 {
 	oldSize := int64(0)
 	if oldVal, _, _ := this.LookupForRead(tx, path, newVal, nil); oldVal != nil {
-		oldSize += int64(oldVal.(crdtcommon.Type).MemSize())
+		oldSize += int64(oldVal.(crdtcommon.CRDT).MemSize())
 	}
 
 	newSize := int64(0)
 	if newVal != nil {
-		newSize = int64(newVal.(crdtcommon.Type).MemSize())
+		newSize = int64(newVal.(crdtcommon.CRDT).MemSize())
 	}
 
 	return newSize - oldSize
@@ -494,12 +502,12 @@ func (this *StateCache) ExportAll(preprocs ...func([]*statecell.StateCell) []*st
 	return accesses, transitions
 }
 
-func (this *StateCache) KVs() ([]string, []crdtcommon.Type) {
+func (this *StateCache) KVs() ([]string, []crdtcommon.CRDT) {
 	transitions := statecell.StateCells(slice.Clone(this.Export(statecell.Sorter))).To(statecell.ITTransition{})
 
-	values := make([]crdtcommon.Type, len(transitions))
+	values := make([]crdtcommon.CRDT, len(transitions))
 	keys := slice.ParallelTransform(transitions, 4, func(i int, v *statecell.StateCell) string {
-		values[i] = v.Value().(crdtcommon.Type)
+		values[i] = v.Value().(crdtcommon.CRDT)
 		return *v.GetPath()
 	})
 	return keys, values

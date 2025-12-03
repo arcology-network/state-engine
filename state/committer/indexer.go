@@ -42,7 +42,7 @@ func PathIndexer(store crdtcommon.ReadOnlyStore) *indexer.UnorderedIndexer[strin
 		// The function to update the value when it exists.
 		func(k string, v *statecell.StateCell) []*statecell.StateCell {
 			if v.Value() != nil {
-				v.Value().(crdtcommon.Type).Preload(k, store)
+				v.Value().(crdtcommon.CRDT).Preload(k, store)
 			}
 			return []*statecell.StateCell{v}
 		},

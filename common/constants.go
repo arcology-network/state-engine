@@ -23,7 +23,7 @@ import (
 
 const (
 	MAX_DEPTH uint8 = 12
-	SYSTEM          = math.MaxInt32
+	SYSTEM          = math.MaxInt32 // State writer ID, will skip the conflict check.
 
 	UNKNOWN  uint8 = iota // Unknown path type
 	ETH_PATH uint8 = 1    // Ethereum path type

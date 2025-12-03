@@ -52,7 +52,7 @@ type StorageProxy struct {
 	ethStorage  *ethstg.EthWorldState
 }
 
-// Cache may also have its storeage, this is the cache only store proxy, no storage.
+// Cache may also have its storeage, this is a cache only store proxy, no storage.
 // Used for testing and debugging.
 func NewCacheOnlyStoreProxy() *StorageProxy {
 	proxy := &StorageProxy{
@@ -106,15 +106,15 @@ func (this *StorageProxy) ExecStore() *livebackend.LiveStorage { return this.exe
 func (this *StorageProxy) EthStore() *ethstg.EthWorldState     { return this.ethStorage }  // Eth storage
 
 // Check if the key exists in the execution storage.
-func (this *StorageProxy) ReadStorage(key string, T any) (any, error) {
-	if v, ok := this.execCache.Get(key); ok { // Check the cache first
-		return v, nil
-	}
-	return this.execBackend.Retrieve(key, T)
+func (this *StorageProxy) ReadStorage(key string, v any) (any, error) {
+	return this.Retrieve(key, v)
 }
 
 func (this *StorageProxy) Retrieve(key string, v any) (any, error) {
-	return this.ReadStorage(key, v)
+	if val, ok := this.execCache.Get(key); ok { // Check the cache first
+		return val, nil
+	}
+	return this.execBackend.Retrieve(key, v)
 }
 
 func (this *StorageProxy) Preload(data []byte) any {
@@ -129,9 +129,11 @@ func (this *StorageProxy) IfExists(key string) bool {
 	return this.execBackend.IfExists(key)
 }
 
-// Directly inject the value into the storage, on for initializing concurrent container storage
-func (this *StorageProxy) Inject(key string, v any) error {
-	return this.execBackend.Inject(key, v)
+// Directly write the value into the storage, only for initializing concurrent container storage
+// and debugging purpose.
+func (this *StorageProxy) Write(key string, v any) error {
+	return this.execBackend.Write(key, v)
+
 }
 
 // Get the stores that can be
@@ -160,7 +162,7 @@ func (this *StorageProxy) AsyncWriters() []crdtcommon.Writer[*statecell.StateCel
 // Filter out the transitions that are not needed to be persisted.
 func (this *StorageProxy) RemoveTransients(tran *statecell.StateCell) bool {
 	// System paths only get reset if they are transient.
-	if v := (*tran).Value(); v != nil && v.(crdtcommon.Type).TypeID() == commutative.PATH && v.(*commutative.Path).IsBlockBound() && this.platform.IsSysPath(*(*tran).GetPath()) {
+	if v := (*tran).Value(); v != nil && v.(crdtcommon.CRDT).TypeID() == commutative.PATH && v.(*commutative.Path).IsBlockBound() && this.platform.IsSysPath(*(*tran).GetPath()) {
 		v.(*commutative.Path).Reset()
 	}
 

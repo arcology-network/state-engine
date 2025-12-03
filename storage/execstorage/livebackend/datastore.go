@@ -70,29 +70,28 @@ func (this *LiveStorage) Decoder(any) func(string, []byte, any) any     { return
 func (this *LiveStorage) GetBackend() commonintf.PersistentStorage   { return this.db }
 func (this *LiveStorage) SetBackend(db commonintf.PersistentStorage) { this.db = db }
 
-// func (this *LiveStorage) ReadStorage(key string) bool { return this.IfExists(key) }
-
-// No access tracking
-func (this *LiveStorage) IfExists(key string) bool {
-	v, _ := this.Retrieve(key, nil)
-	return v != nil
-}
-
-// Inject directly to the local cache.
-func (this *LiveStorage) Inject(key string, v any) error {
+// Write directly to the local cache. This only happends
+// when we are doing special initialization of the storage.
+func (this *LiveStorage) Write(key string, v any) error {
 	this.cache.Set(key, v)
 	encoded, _ := this.encoder(key, v)
 	return this.db.BatchSet([]string{key}, [][]byte{encoded})
 }
 
-// Inject directly to the local cache.
-func (this *LiveStorage) BatchInject(keys []string, values []any) error {
+// Batch Write directly to the local cache.
+func (this *LiveStorage) BatchWrite(keys []string, values []any) error {
 	this.cache.BatchSet(keys, values) // update the local cache
 	encoded := make([][]byte, len(keys))
 	for i := 0; i < len(keys); i++ {
 		encoded[i], _ = this.encoder(keys[i], values[i])
 	}
 	return this.db.BatchSet(keys, encoded)
+}
+
+// No access tracking
+func (this *LiveStorage) IfExists(key string) bool {
+	v, _ := this.Retrieve(key, nil)
+	return v != nil
 }
 
 // Get from the underlying storage directly.

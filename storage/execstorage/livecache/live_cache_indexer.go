@@ -30,7 +30,7 @@ type LiveCacheIndexer struct {
 	buffer       []*statecell.StateCell
 	importBuffer []*statecell.StateCell
 	keys         []string
-	values       []crdtcommon.Type
+	values       []crdtcommon.CRDT
 	filter       func(*statecell.StateCell) bool
 }
 
@@ -40,7 +40,7 @@ func NewLiveCacheIndexer(store *LiveCache, Version int64, filter func(*statecell
 		importBuffer: []*statecell.StateCell{},
 		keys:         []string{},
 		filter:       filter,
-		values:       []crdtcommon.Type{},
+		values:       []crdtcommon.CRDT{},
 	}
 }
 
@@ -63,10 +63,10 @@ func (this *LiveCacheIndexer) Finalize() {
 	slice.RemoveIf((*[]*statecell.StateCell)(&this.buffer), func(i int, v *statecell.StateCell) bool { return v.GetPath() == nil })
 
 	this.keys = make([]string, len(this.buffer))
-	this.values = slice.ParallelTransform(this.buffer, runtime.NumCPU(), func(i int, v *statecell.StateCell) crdtcommon.Type {
+	this.values = slice.ParallelTransform(this.buffer, runtime.NumCPU(), func(i int, v *statecell.StateCell) crdtcommon.CRDT {
 		this.keys[i] = *v.GetPath()
 		if v.Value() != nil {
-			return v.Value().(crdtcommon.Type)
+			return v.Value().(crdtcommon.CRDT)
 		}
 		return nil // A deletion
 	})
@@ -87,7 +87,7 @@ func (this *LiveCacheIndexer) Merge(idxers []*LiveCacheIndexer) *LiveCacheIndexe
 
 	// this.values = slice.ConcateDo(idxers,
 	// 	func(idxer *LiveCacheIndexer) uint64 { return uint64(len(idxer.values)) },
-	// 	func(idxer *LiveCacheIndexer) []crdtcommon.Type { return idxer.values })
+	// 	func(idxer *LiveCacheIndexer) []crdtcommon.CRDT { return idxer.values })
 
 	return this
 }

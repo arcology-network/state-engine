@@ -38,7 +38,7 @@ import (
 // readily available.
 
 type LiveCache struct {
-	*cache.ReadCache[string, *associative.Pair[crdtcommon.Type, *Profile]]               // Provide Readonly interface
+	*cache.ReadCache[string, *associative.Pair[crdtcommon.CRDT, *Profile]]               // Provide Readonly interface
 	profile                                                                *CacheProfile // Memory usage of the cache itself.
 }
 
@@ -46,7 +46,7 @@ func NewLiveCache(cacheCap uint64) *LiveCache {
 	cache := &LiveCache{
 		ReadCache: cache.NewReadCache(
 			4096, // 4096 shards to avoid lock contention
-			func(v *associative.Pair[crdtcommon.Type, *Profile]) bool {
+			func(v *associative.Pair[crdtcommon.CRDT, *Profile]) bool {
 				return v == nil
 			},
 			func(k string) uint64 {
@@ -63,7 +63,7 @@ func (this *LiveCache) Profile() *CacheProfile { return this.profile }
 func (this *LiveCache) Size() uint64           { return this.profile.occupied }
 
 func (this *LiveCache) CacheChecksum() [32]byte {
-	encoders := func(k string, v *associative.Pair[crdtcommon.Type, *Profile]) ([]byte, []byte) {
+	encoders := func(k string, v *associative.Pair[crdtcommon.CRDT, *Profile]) ([]byte, []byte) {
 		return []byte(k), v.First.Encode()
 	}
 
@@ -74,10 +74,10 @@ func (this *LiveCache) CacheChecksum() [32]byte {
 }
 
 func (this *LiveCache) Delete(keys []string) {
-	this.ReadCache.BatchSet(keys, make([]*associative.Pair[crdtcommon.Type, *Profile], len(keys)))
+	this.ReadCache.BatchSet(keys, make([]*associative.Pair[crdtcommon.CRDT, *Profile], len(keys)))
 }
 
-func (this *LiveCache) Get(key string) (crdtcommon.Type, bool) {
+func (this *LiveCache) Get(key string) (crdtcommon.CRDT, bool) {
 	v, ok := this.ReadCache.Get(key)
 	if !ok {
 		return nil, ok
@@ -86,7 +86,7 @@ func (this *LiveCache) Get(key string) (crdtcommon.Type, bool) {
 }
 
 // Get the raw value from the cache with the usage information.
-func (this *LiveCache) GetRaw(key string) (*associative.Pair[crdtcommon.Type, *Profile], bool) {
+func (this *LiveCache) GetRaw(key string) (*associative.Pair[crdtcommon.CRDT, *Profile], bool) {
 	v, ok := this.ReadCache.Get(key)
 	if !ok {
 		return nil, ok
@@ -108,15 +108,15 @@ func (this *LiveCache) Commit(univals []*statecell.StateCell, block uint64) {
 		return *v.GetPath()
 	})
 
-	pairedVals := slice.ParallelTransform(univals, runtime.NumCPU(), func(i int, v *statecell.StateCell) *associative.Pair[crdtcommon.Type, *Profile] {
+	pairedVals := slice.ParallelTransform(univals, runtime.NumCPU(), func(i int, v *statecell.StateCell) *associative.Pair[crdtcommon.CRDT, *Profile] {
 		if v.Value() == nil {
 			return nil
 		}
 
-		pair := &associative.Pair[crdtcommon.Type, *Profile]{
-			First: v.Value().(crdtcommon.Type),
+		pair := &associative.Pair[crdtcommon.CRDT, *Profile]{
+			First: v.Value().(crdtcommon.CRDT),
 			Second: &Profile{
-				sizeInMem:   v.Value().(crdtcommon.Type).MemSize(),
+				sizeInMem:   v.Value().(crdtcommon.CRDT).MemSize(),
 				visits:      uint64(v.Reads()) + uint64(v.Writes()) + uint64(v.DeltaWrites()),
 				firstLoaded: uint32(block),
 			},

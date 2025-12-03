@@ -83,9 +83,9 @@ func (this DeltaSequence) Finalized() *statecell.StateCell { return this[0] }
 
 type DeltaSequences []DeltaSequence
 
-func (this DeltaSequences) Finalized() []crdtcommon.Type {
-	return slice.Transform(this, func(_ int, v DeltaSequence) crdtcommon.Type {
-		return v[0].Value().(crdtcommon.Type)
+func (this DeltaSequences) Finalized() []crdtcommon.CRDT {
+	return slice.Transform(this, func(_ int, v DeltaSequence) crdtcommon.CRDT {
+		return v[0].Value().(crdtcommon.CRDT)
 	})
 }
 

@@ -218,11 +218,11 @@ func (this *Account) Retrieve(path string, T any) (interface{}, error) {
 	}
 
 	return ethrlp.RlpCodec{}.Decode(path, buffer, T), err
-	// return T.(crdtcommon.Type).StorageDecode(key, buffer), err
+	// return T.(crdtcommon.CRDT).StorageDecode(key, buffer), err
 }
 
 // Update the account's storage trie with the given keys and values.
-func (this *Account) UpdateAccountStorageTrie(keys []string, typedVals []crdtcommon.Type) error {
+func (this *Account) UpdateAccountStorageTrie(keys []string, typedVals []crdtcommon.CRDT) error {
 	if pos, _ := slice.FindFirstIf(keys,
 		func(_ int, k string) bool {
 			return len(k) == statecommon.ETH_ACCOUNT_FULL_LENGTH+1
@@ -270,7 +270,7 @@ func (this *Account) UpdateAccountStorageTrie(keys []string, typedVals []crdtcom
 	})
 
 	// Encode the values
-	encodedVals := slice.ParallelTransform(typedVals, numThd, func(i int, _ crdtcommon.Type) []byte {
+	encodedVals := slice.ParallelTransform(typedVals, numThd, func(i int, _ crdtcommon.CRDT) []byte {
 		return common.IfThenDo1st(typedVals[i] != nil, func() []byte {
 			// return typedVals[i].StorageEncode(keys[i])
 			v, _ := ethrlp.RlpCodec{}.Encode(keys[i], typedVals[i])
@@ -293,9 +293,9 @@ func (this *Account) UpdateAccountStorageTrie(keys []string, typedVals []crdtcom
 }
 
 // Write the account changes to theirs Eth Trie
-func (this *Account) ApplyChanges(transitions [][]*statecell.StateCell, getter func([]*statecell.StateCell) (string, crdtcommon.Type)) ([]string, []crdtcommon.Type, error) {
+func (this *Account) ApplyChanges(transitions [][]*statecell.StateCell, getter func([]*statecell.StateCell) (string, crdtcommon.CRDT)) ([]string, []crdtcommon.CRDT, error) {
 	keys := make([]string, len(transitions))
-	typedVals := slice.Transform(transitions, func(i int, vals []*statecell.StateCell) crdtcommon.Type {
+	typedVals := slice.Transform(transitions, func(i int, vals []*statecell.StateCell) crdtcommon.CRDT {
 		_, v := getter(vals)
 		keys[i] = *vals[i].GetPath()
 		return v

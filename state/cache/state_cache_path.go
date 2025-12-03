@@ -83,8 +83,8 @@ func (this *StateCache) KeyAt(tx uint64, path string, index any, T any) (string,
 // Peek the value under a path. The difference between Peek and Read is that Peek does not have access metadata attached.
 func (this *StateCache) Peek(path string, T any) (any, any, uint64) {
 	if v, _, _ := this.LookupForRead(stgcommon.SYSTEM, path, T, nil); v != nil {
-		originalV, _, _ := v.(crdtcommon.Type).Get()
-		return originalV, v, v.(crdtcommon.Type).MemSize()
+		originalV, _, _ := v.(crdtcommon.CRDT).Get()
+		return originalV, v, v.(crdtcommon.CRDT).MemSize()
 	}
 	return nil, nil, stgcommon.MIN_READ_SIZE
 }

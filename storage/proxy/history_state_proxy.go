@@ -17,10 +17,9 @@
 package proxy
 
 import (
-	"math"
-
 	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
-	livecache "github.com/arcology-network/state-engine/storage/execstorage/livecache"
+
+	// "github.com/arcology-network/state-engine/storage/proxy"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 
@@ -35,7 +34,7 @@ type HistoryEthStorageProxy struct {
 	*ethstg.EthWorldState
 	root        ethcommon.Hash
 	blockNumber uint64
-	execCache   *livecache.LiveCache // An object cache for the backend storage, only updated once at the end of the block.
+	stgProxy    *StorageProxy
 }
 
 func NewHistoryEthStorageProxy(root ethcommon.Hash, blockNumber uint64, backend *ethstg.EthShardTrieDB) (*HistoryEthStorageProxy, error) {
@@ -48,20 +47,25 @@ func NewHistoryEthStorageProxy(root ethcommon.Hash, blockNumber uint64, backend 
 		EthWorldState: ethWorldState,
 		root:          root,
 		blockNumber:   blockNumber,
-		execCache:     livecache.NewLiveCache(math.MaxUint64), // All the data in the execution cache will be removed after the call.
+		stgProxy:      NewCacheOnlyStoreProxy(), // All the data in the execution cache will be removed after the call.
 	}, nil
 }
 
 // Check if the key exists in the source, which can be a cache or a storage.
 func (this *HistoryEthStorageProxy) IfExists(key string) bool {
-	if _, ok := this.execCache.Get(key); ok { // Check the cache first
+	v, err := this.stgProxy.Retrieve(key, nil)
+	if err == nil {
+		return false
+	}
+
+	if v != nil {
 		return true
 	}
 	return this.EthWorldState.IfExists(key)
 }
 
 func (this *HistoryEthStorageProxy) ReadStorage(key string, T any) (any, error) {
-	if v, ok := this.execCache.Get(key); ok { // Check the cache first
+	if v, ok := this.stgProxy.ExecCache().Get(key); ok { // Check the cache first
 		return v, nil
 	}
 	return this.EthWorldState.Retrieve(key, T)

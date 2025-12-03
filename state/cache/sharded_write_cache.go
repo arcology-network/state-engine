@@ -124,8 +124,8 @@ func (this *ShardedStateCache) Equal(other *ShardedStateCache) bool {
 	return true
 }
 
-func (this *ShardedStateCache) KVs() ([][]string, [][]crdtcommon.Type) {
-	keySet, valueSet := make([][]string, len(this.caches)), make([][]crdtcommon.Type, len(this.caches))
+func (this *ShardedStateCache) KVs() ([][]string, [][]crdtcommon.CRDT) {
+	keySet, valueSet := make([][]string, len(this.caches)), make([][]crdtcommon.CRDT, len(this.caches))
 	for i := 0; i < len(this.caches); i++ {
 		keySet[i], valueSet[i] = this.caches[i].KVs()
 	}
