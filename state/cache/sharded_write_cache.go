@@ -108,7 +108,7 @@ func (this *ShardedStateCache) Import(transitions []*statecell.StateCell) *Shard
 // Reset the writecache to the initial state for the next round of processing.
 // func (this *ShardedStateCache) Precommit([]uint32) [32]byte { return [32]byte{} }
 
-func (this *ShardedStateCache) Clear() *ShardedStateCache {
+func (this *ShardedStateCache) Reset() *ShardedStateCache {
 	slice.ParallelForeach(this.caches[:], runtime.NumCPU(), func(i int, wcache **StateCache) {
 		(*wcache).Clear()
 	})

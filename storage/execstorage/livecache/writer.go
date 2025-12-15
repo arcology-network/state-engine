@@ -48,20 +48,23 @@ func (this *LiveCacheWriter) Import(transitions []*statecell.StateCell) {
 }
 
 // Send the data to the downstream processor, this is called for each generation.
-// If there are multiple generations, this can be called multiple times before Await.
-// Each generation
+// If there are multiple generations, this can be called multiple times before isSync==true
 func (this *LiveCacheWriter) Precommit(isSync bool) {
 	if !this.liveCache.Status() {
 		return // Cache is disabled, do nothing.
 	}
 
 	if isSync {
-		this.LiveCacheIndexer.PreCommit()
+		this.LiveCacheIndexer.Reset() // In the sync phase, clear the buffer.
 	} else {
 		this.LiveCacheIndexer.Finalize()                                             // Remove the nil transitions
 		this.buffer = append(this.buffer, this.LiveCacheIndexer)                     // Append the indexer to the buffer
 		this.LiveCacheIndexer = NewLiveCacheIndexer(this.liveCache, -1, this.filter) // Reset the indexer with a default version number
 	}
+}
+
+func (this *LiveCacheWriter) Reset() {
+	this.LiveCacheIndexer.Reset()
 }
 
 // Triggered by the block commit.

@@ -54,7 +54,9 @@ func (this *LiveCacheIndexer) Import(transitions []*statecell.StateCell) {
 	}
 }
 
-func (this *LiveCacheIndexer) PreCommit() {
+func (this *LiveCacheIndexer) PreCommit() {} // Placeholder functions
+
+func (this *LiveCacheIndexer) Reset() { // Clear the buffer
 	this.buffer = this.importBuffer
 	this.importBuffer = []*statecell.StateCell{}
 }

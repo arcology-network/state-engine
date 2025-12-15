@@ -33,7 +33,7 @@ func NewExecutionCacheWriter(writeCache *StateCache, version int64) *ExecutionCa
 }
 
 // write cache updates itself every generation. It doesn't need to write to the database.
-func (this *ExecutionCacheWriter) Precommit(isSync bool) {
+func (this *ExecutionCacheWriter) Precommit(_ bool) {
 	this.ExecutionCacheIndexer.Finalize() // Remove the nil transitions
 	for i := range this.ExecutionCacheIndexer.buffer {
 		this.StateCache.localCells[*this.ExecutionCacheIndexer.buffer[i].GetPath()] = this.ExecutionCacheIndexer.buffer[i]

@@ -134,6 +134,7 @@ func (this *LiveCache) Commit(univals []*statecell.StateCell, block uint64) {
 	this.ReadCache.Commit(keys, pairedVals) // update the local cache with the new values in the indexer
 }
 
+// Print the content of the live cache for debugging.
 func (this *LiveCache) Print() {
 	keys, vals := this.ReadCache.KVs()
 	slice.SortBy1st(keys, vals, func(k0, k1 string) bool {
@@ -143,6 +144,7 @@ func (this *LiveCache) Print() {
 	fmt.Println("occupied:", this.profile.occupied)
 
 	for i, k := range keys {
-		println(k, "      ", vals[i].First)
+		println(k, "  =    ")
+		vals[i].First.Print()
 	}
 }

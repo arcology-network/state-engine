@@ -29,7 +29,8 @@ import (
 )
 
 func TestHistoryStateProxyWithLvlDB(t *testing.T) {
-	tmpDBDir := "/tmp/eth_storage_test_db"
+	tmpDir := t.TempDir()
+	tmpDBDir := tmpDir + "/eth_storage_test_db"
 	wordState := NewLevelDBDataStore(tmpDBDir, &hashdb.Config{CleanCacheSize: 1024 * 1024 * 100})
 	paraTrie := wordState.WorldStateTrie()
 

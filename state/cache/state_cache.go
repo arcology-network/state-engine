@@ -497,13 +497,13 @@ func (this *StateCache) Export(preprocs ...func([]*statecell.StateCell) []*state
 // For the testing purpose, export the content of the writecache to two arrays of cells and filter.
 func (this *StateCache) ExportAll(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) ([]*statecell.StateCell, []*statecell.StateCell) {
 	all := this.Export()
-	accesses := statecell.StateCells(slice.Clone(all)).To(statecell.ITAccess{})
-	transitions := statecell.StateCells(slice.Clone(all)).To(statecell.ITTransition{})
+	accesses := statecell.StateCells(slice.Clone(all)).To(statecell.InterThreadAccess{})
+	transitions := statecell.StateCells(slice.Clone(all)).To(statecell.InterThreadTransition{})
 	return accesses, transitions
 }
 
 func (this *StateCache) KVs() ([]string, []crdtcommon.CRDT) {
-	transitions := statecell.StateCells(slice.Clone(this.Export(statecell.Sorter))).To(statecell.ITTransition{})
+	transitions := statecell.StateCells(slice.Clone(this.Export(statecell.Sorter))).To(statecell.InterThreadTransition{})
 
 	values := make([]crdtcommon.CRDT, len(transitions))
 	keys := slice.ParallelTransform(transitions, 4, func(i int, v *statecell.StateCell) string {

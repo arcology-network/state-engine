@@ -63,7 +63,7 @@ func (this *LiveStgIndexer) Import(trans []*statecell.StateCell) {
 	}
 }
 
-func (this *LiveStgIndexer) PreCommit() {
+func (this *LiveStgIndexer) Reset() {
 	this.buffer = this.importBuffer
 	this.importBuffer = []*statecell.StateCell{}
 }

@@ -28,7 +28,7 @@ import (
 )
 
 type Platform struct {
-	syspaths map[string]uint8
+	defaultPaths map[string]uint8
 }
 
 // Returns a list of paths that need to be created under the account automatically when the account is created.
@@ -58,7 +58,7 @@ func ETHAccountShard(numOfShard int, key string) int {
 
 // Get ths builtin paths
 func (this *Platform) GetDefault(acct string) ([]string, []uint8) {
-	paths, typeIds := mapi.KVs(this.syspaths)
+	paths, typeIds := mapi.KVs(this.defaultPaths)
 	slice.SortBy1st(paths, typeIds, func(lhv, rhv string) bool { return lhv < rhv })
 
 	for i, path := range paths {
@@ -74,7 +74,7 @@ func (this *Platform) IsSysPath(path string) bool {
 	}
 
 	subPath := path[ETH_ACCOUNT_FULL_LENGTH:] // Removed the shared prefix part
-	_, ok := this.syspaths[subPath]
+	_, ok := this.defaultPaths[subPath]
 	return ok
 }
 

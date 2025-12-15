@@ -31,6 +31,9 @@ const (
 
 	MIN_READ_SIZE  uint64 = 32 // A single read request should at least cost
 	MIN_WRITE_SIZE uint64 = 32 // A single write request should at least cost
+
+	EXECUTION_PARALLELISM         uint32 = 32 // Default execution parallelism degree
+	DEFAULT_EXECUTION_PARALLELISM uint32 = 0  // System will decide the parallelism degree.
 )
 
 var WARN_OUT_OF_LOWER_LIMIT string = "Warning: Out of the lower limit!"
@@ -78,7 +81,7 @@ const (
 
 	// PATH_FUNC_PROFILE is the namespace for per-function execution metadata:
 	// parallelism degree, deferred-execution prepayment, conflict sets, etc.
-	PATH_FUNC_PROFILE = FUNC_PROFILE_PATH
+	PATH_FUNC_PROFILE = "/profiles/"
 
 	// PATH_STORAGE_ROOT is the root namespace for a contract’s storage.
 	PATH_STORAGE_ROOT = "/storage/"
@@ -97,11 +100,10 @@ const (
 	PATH_STORAGE_NATIVE = PATH_STORAGE_ROOT + PATH_ETH_NATIVE
 
 	// function property paths, that can be created on the fly.
-	FUNC_PROFILE_PATH  = "/profiles/"
-	PARALLELISM_DEGREE = "parallelism-degree" // The execution parallelism of the function, either parallel or sequential
-	DEFERRED_PAYMENT   = "prepayment"         // Amount of gas prepaid required for the function's deferred execution
-	PREPAYERS          = "prepayers/"         // Address of the gas prepayers for the function's deferred execution
-	CONFLICT_INFO_PATH = "conflicts/"         // The history of conflicts for the function, used for debugging and analysis
+	PATH_PARALLELISM_DEGREE = "parallelism-degree" // The execution parallelism of the function, either parallel or sequential
+	PATH_DEFERRED_PAYMENT   = "prepayment"         // Amount of gas prepaid required for the function's deferred execution
+	PATH_PREPAYERS          = "prepayers/"         // Address of the gas prepayers for the function's deferred execution
+	PATH_CONFLICT_INFO      = "conflicts/"         // The history of conflicts for the function, used for debugging and analysis
 )
 
 // For scheduler conflict management

@@ -110,14 +110,14 @@ func (this *StateCommitter) Import(transitions []*statecell.StateCell) *StateCom
 // Finalize finalizes the transitions in the StateCommitter.
 func (this *StateCommitter) whitelist(txs []uint64) *StateCommitter {
 	if len(txs) == 0 {
-		return this
+		return this // All transitions are kept, no removals are flagged.
 	}
 
 	whitelistDict := mapi.FromSlice(txs, func(_ uint64) bool { return true })
 	this.byTxID.ParallelForeachDo(func(txid uint64, vec *[]*statecell.StateCell) {
 		if _, ok := whitelistDict[uint64(txid)]; !ok {
 			for _, v := range *vec {
-				v.SetPath(nil) // Mark the transition status, so that it can be removed later.
+				v.SetPath(nil) // Flag the transition status, so that it can be removed later.
 			}
 		}
 	})

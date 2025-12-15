@@ -43,7 +43,7 @@ func NewLiveStorageWriter(store *LiveStorage, version int64, filter func(*statec
 // before calling Await to commit the data to the state db.
 func (this *LiveStorageWriter) Precommit(isSync bool) {
 	if isSync {
-		this.LiveStgIndexer.PreCommit()
+		this.LiveStgIndexer.Reset()
 	} else {
 		this.LiveStgIndexer.Finalize() // Remove the nil transitions
 		this.buffer = append(this.buffer, this.LiveStgIndexer)
@@ -64,5 +64,5 @@ func (this *LiveStorageWriter) Commit(_ uint64) {
 	this.buffer = this.buffer[:0]
 }
 
-func (this *LiveStorageWriter) IsSync() bool { return false }
+func (this *LiveStorageWriter) IsSync() bool { return false } // If the storage needs synchronous writes
 func (this *LiveStorageWriter) Name() string { return "Live Storage Writer" }

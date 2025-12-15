@@ -69,6 +69,8 @@ func NewCacheOnlyStoreProxy() *StorageProxy {
 	return proxy
 }
 
+// NewMemDBStoreProxy creates a new storage proxy with in-memory databases for
+// both execution and Ethereum storage.
 func NewMemDBStoreProxy() *StorageProxy {
 	proxy := NewCacheOnlyStoreProxy()
 	proxy.execBackend.SetBackend(memdb.NewMemoryDB())
@@ -91,11 +93,6 @@ func NewLevelDBStoreProxy(ethDBPath, execDBPath string, cacheCap uint64, cacheCo
 	// proxy.execCache = livecache.NewLiveCache(math.MaxUint64)
 	return proxy
 }
-
-// NewStoreProxyPersistentDB creates a new storage proxy with a persistent databases
-// func NewTestLevelDBStoreProxy() *StorageProxy {
-// 	return NewLevelDBStoreProxy("/tmp")
-// }
 
 func (this *StorageProxy) EnableCache()    { this.execCache.Enable() }
 func (this *StorageProxy) DisableCache()   { this.execCache.Disable() }

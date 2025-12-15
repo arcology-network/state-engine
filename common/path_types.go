@@ -36,13 +36,9 @@ func ParseAccountAddr(acct string) (string, string, string) {
 }
 
 // GetAccountAddr extracts the canonical Ethereum address from a path string.
-func GetAccountAddr(acct string) string {
-	_, addr, _ := ParseAccountAddr(acct)
+func GetAccountAddr(path string) string {
+	_, addr, _ := ParseAccountAddr(path)
 	return addr
-	// if len(acct) < ETH_ACCOUNT_PREFIX_LENGTH+ETH_ACCOUNT_LENGTH {
-	// 	return acct
-	// }
-	// return acct[ETH_ACCOUNT_PREFIX_LENGTH : ETH_ACCOUNT_PREFIX_LENGTH+ETH_ACCOUNT_LENGTH]
 }
 
 func GetPathUnder(key, prefix string) string {
@@ -145,3 +141,5 @@ func GetSegmentAt(path string, n int, includeLeading, includeTrailing bool) (str
 
 	return "", false
 }
+
+
