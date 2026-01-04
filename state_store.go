@@ -21,7 +21,7 @@ import (
 	// "github.com/arcology-network/concurrenturl/commutative"
 
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
-	stgcommon "github.com/arcology-network/state-engine/common"
+	statecommon "github.com/arcology-network/state-engine/common"
 	committer "github.com/arcology-network/state-engine/state/committer"
 
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
@@ -54,7 +54,7 @@ func NewStateStore(backend *proxy.StorageProxy) *StateStore {
 
 	// Commit initial transitions to the store if any.
 	initTrans := []*statecell.StateCell{
-		// statecell.NewStateCell(stgcommon.SYSTEM, stgcommon.GAS_PREPAYERS, 0, 1, 0, commutative.NewPath(), nil),
+		// statecell.NewStateCell(statecommon.SYSTEM, stgcommon.GAS_PREPAYERS, 0, 1, 0, commutative.NewPath(), nil),
 	}
 
 	for _, tran := range initTrans {
@@ -63,7 +63,7 @@ func NewStateStore(backend *proxy.StorageProxy) *StateStore {
 
 	committer := committer.NewStateCommitter(store, store.GetWriters())
 	committer.Import(initTrans)
-	committer.Precommit([]uint64{stgcommon.SYSTEM})
+	committer.Precommit([]uint64{statecommon.SYSTEM})
 	committer.DebugCommit(0)
 	return store
 }

@@ -20,9 +20,7 @@ import (
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	slice "github.com/arcology-network/common-lib/exp/slice"
-
-	// stgcommon "github.com/arcology-network/state-engine/common"
-	stgcommon "github.com/arcology-network/state-engine/common"
+	statecommon "github.com/arcology-network/state-engine/common"
 )
 
 // StateCacheFilter is a post processing filter for StateCache.
@@ -46,7 +44,7 @@ func (this *StateCacheFilter) ToBuffer() []*statecell.StateCell {
 func (this *StateCacheFilter) RemoveByAddress(addr string) {
 	mapi.RemoveIf(this.localCells,
 		func(path string, _ *statecell.StateCell) bool {
-			return path[stgcommon.ETH_ACCOUNT_PREFIX_LENGTH:stgcommon.ETH_ACCOUNT_PREFIX_LENGTH+stgcommon.ETH_ACCOUNT_LENGTH] == addr
+			return path[statecommon.ETH_ACCOUNT_PREFIX_LENGTH:statecommon.ETH_ACCOUNT_PREFIX_LENGTH+statecommon.ETH_ACCOUNT_LENGTH] == addr
 		},
 	)
 }
@@ -63,7 +61,7 @@ func (this *StateCacheFilter) filterByAddress(transitions *[]*statecell.StateCel
 	}
 
 	out := slice.RemoveIf(transitions, func(_ int, v *statecell.StateCell) bool {
-		address := (*v.GetPath())[stgcommon.ETH_ACCOUNT_PREFIX_LENGTH : stgcommon.ETH_ACCOUNT_PREFIX_LENGTH+stgcommon.ETH_ACCOUNT_LENGTH]
+		address := (*v.GetPath())[statecommon.ETH_ACCOUNT_PREFIX_LENGTH : statecommon.ETH_ACCOUNT_PREFIX_LENGTH+statecommon.ETH_ACCOUNT_LENGTH]
 		_, ok := this.ignoreAddresses[address]
 		return ok
 	})

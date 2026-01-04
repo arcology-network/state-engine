@@ -28,7 +28,7 @@ import (
 
 // Encoding and decoding for storage
 // Righ now there are two codecs, one for Arcology native storage and one for Ethereum RLP encoding.
-// This selector chooses the right codec based on the key string.
+// This selector chooses the right codec based on the key string.“
 type StorageCodec struct {
 	ethCodec    rlp.RlpCodec
 	arcoCodec   arcocodec.Codec
@@ -37,7 +37,7 @@ type StorageCodec struct {
 
 func NewStorageCodec() *StorageCodec {
 	return &StorageCodec{
-		pathBuilder: *statecommon.NewPathBuilder(statecommon.ETH_PATH),
+		pathBuilder: *statecommon.NewEthPathBuilder(),
 	}
 }
 

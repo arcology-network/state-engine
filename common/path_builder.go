@@ -17,22 +17,20 @@
 package common
 
 import (
-	"encoding/hex"
-	"errors"
-
 	"github.com/arcology-network/common-lib/codec"
 	evmcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
 type PathBuilder struct {
+	Sender   evmcommon.Address
 	Address  evmcommon.Address
 	Selector [4]byte
 	Platform uint8
 }
 
 // Create a new PathBuilder with the specified platform.
-func NewPathBuilder(platform uint8) *PathBuilder {
+func NewContainerPathBuilder(platform uint8) *PathBuilder {
 	return &PathBuilder{
 		Platform: platform,
 	}
@@ -63,9 +61,15 @@ func (this *PathBuilder) DeriveUIDFromPath(path string) uint64 {
 
 // Build the subpath under the callee profile.
 // e.g., blcc://eth1.0/account/[0x41eff1c3adfca1ccacced2198241747863dbf800]/profiles/[0x12345678]/paraDegree
-func (this *PathBuilder) ProfileField(subpath string) string {
+func (this *PathBuilder) ProfileField(field string) string {
 	return ETH_ACCOUNT_PREFIX + hexutil.Encode(this.Address[:]) +
-		PATH_FUNC_PROFILE + hexutil.Encode(this.Selector[:]) + "/" + subpath
+		PATH_FUNC_PROFILE + hexutil.Encode(this.Selector[:]) + "/" + field
+}
+
+// The Path for the callee profile field.
+// e.g., blcc://eth1.0/account/[0x41eff1c3adfca1ccacced2198241747863dbf800]/profiles/[0x12345678]/paraDegree
+func (this *PathBuilder) UnderSenderPath(subpath string) string {
+	return ETH_ACCOUNT_PREFIX + hexutil.Encode(this.Sender[:]) + subpath
 }
 
 // Derive a unique identifier (UID) from the address and selector.
@@ -76,37 +80,4 @@ func DeriveEthCalleeUID(addr [20]byte, selector [4]byte) uint64 {
 	selectorBytes := make([]byte, SELECTOR_LENGTH)
 	copy(selectorBytes, selector[:])
 	return uint64(codec.Uint64(0).FromBytes(append(address, selectorBytes...)))
-}
-
-// Parse the address and selector from the given key.
-// key: "blcc://eth1.0/account/[0x41eff1c3adfca1ccacced2198241747863dbf800]/profiles/[0x12345678/]" => return "0x41eff1c3adfca1ccacced2198241747863dbf800", "0x12345678"
-func NewPathBuilderFromPath(path string) (*PathBuilder, error) {
-	addr, selector, err := ParseAddressAndSelector(path)
-	return &PathBuilder{Address: addr, Selector: selector, Platform: ETH_PATH}, err
-}
-
-// Parse the address and selector from the given strings.
-func ParseAddressAndSelector(path string) (evmcommon.Address, [4]byte, error) {
-	acct, selector := "", ""
-	if len(path) >= ETH_ACCOUNT_FULL_LENGTH {
-		acct = path[ETH_ACCOUNT_PREFIX_LENGTH:ETH_ACCOUNT_FULL_LENGTH]
-	}
-
-	if len(path) >= ETH_ACCOUNT_FULL_LENGTH+len(PATH_FUNC_PROFILE)+SELECTOR_LENGTH {
-		selector = path[ETH_ACCOUNT_FULL_LENGTH+len(PATH_FUNC_PROFILE) : ETH_ACCOUNT_FULL_LENGTH+len(PATH_FUNC_PROFILE)+SELECTOR_LENGTH]
-	}
-
-	Address, Selector := evmcommon.Address{}, [4]byte{}
-	addrBytes, err := hex.DecodeString(acct)
-	if err != nil {
-		return Address, Selector, errors.New("Invalid eth account address: " + acct)
-	}
-	copy(Address[:], addrBytes)
-
-	selectorBytes, err := hex.DecodeString(selector)
-	if err != nil {
-		return Address, Selector, errors.New("Invalid eth account selector: " + selector)
-	}
-	copy(Selector[:], selectorBytes)
-	return Address, Selector, nil
 }

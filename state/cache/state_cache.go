@@ -150,7 +150,7 @@ func (this *StateCache) SetID(id uint64) { this.id = id }
 func (this *StateCache) GetVersion() uint64        { return this.stateVersion }
 func (this *StateCache) SetVersion(version uint64) { this.stateVersion = version }
 
-func (this *StateCache) AddToDict(v *statecell.StateCell)        { this.localCells[*v.GetPath()] = v }
+func (this *StateCache) addToLocalCache(v *statecell.StateCell)  { this.localCells[*v.GetPath()] = v }
 func (this *StateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore { return this.readonlyBackend }
 func (this *StateCache) Cache() *map[string]*statecell.StateCell { return &this.localCells }
 func (this *StateCache) Preload([]byte) any {
@@ -175,14 +175,14 @@ func (this *StateCache) NewStateCell() *statecell.StateCell { return this.pool.N
 // still find them and their immediate parent path also exists, although their grandparent path
 // are gone. Unless we recursively check the parent paths, we can't tell if they are truly gone.
 // This requires a lot of queries and decoding.
-func (this *StateCache) ExistsInParent(path string) bool {
+func (this *StateCache) ExistsInParent(tx uint64, path string, do func(*statecell.StateCell)) bool {
 	// No metadata for immediate children of system paths.
 	if this.platform.IsImmediateChildOfSysPath(path) {
 		return true
 	}
 
 	parentPath, _ := statecommon.GetParentPath(path) // Get the parent path
-	if meta, _, _ := this.LookupOrMaterialize(0, parentPath, new(commutative.Path), nil); meta != nil {
+	if meta, _, _ := this.LookupOrMaterialize(tx, parentPath, new(commutative.Path), do, false); meta != nil {
 		childKey := path[len(parentPath):]
 		if ok, _ := meta.(*commutative.Path).Exists(childKey); ok { // Add the path to the parent path
 			return ok
@@ -197,7 +197,7 @@ func (this *StateCache) LookupForRead(tx uint64, path string, T any, do func(*st
 	// If the path doesn't exist in the parent snapshot at all (no committed
 	// value, no wildcard/container inheritance), just return an empty,
 	// non-cached cell.
-	if !this.ExistsInParent(path) {
+	if !this.ExistsInParent(tx, path, do) {
 		return nil, this.NewStateCell().Init(tx, path, 0, 0, 0, nil, false), false
 	}
 
@@ -205,7 +205,7 @@ func (this *StateCache) LookupForRead(tx uint64, path string, T any, do func(*st
 	// semantics), reuse the full resolution pipeline. This may materialize
 	// a StateCell into localCells, but the caller is still "read-only" from
 	// a semantics point of view.
-	return this.LookupOrMaterialize(tx, path, T, do) // Find the value in the cache
+	return this.LookupOrMaterialize(tx, path, T, do, true) // Find the value in the cache
 }
 
 // FindForWrite resolves the StateCell for `path` through a 3-step lookup:
@@ -216,7 +216,11 @@ func (this *StateCache) LookupForRead(tx uint64, path string, T any, do func(*st
 //
 // It may insert a new StateCell into localCells when a wildcard/container
 // delete implies a *logical* deleted state for this path.
-func (this *StateCache) LookupOrMaterialize(tx uint64, path string, T any, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
+func (this *StateCache) LookupOrMaterialize(tx uint64, path string, T any, do func(*statecell.StateCell), cached bool) (any, *statecell.StateCell, bool) {
+	// if tx == 0 {
+	// 	fmt.Println("Tx:", tx, "Path:", path)
+	// }
+
 	if cell, ok := this.localCells[path]; ok {
 		return cell.Value(), cell, true // From cache
 	}
@@ -245,8 +249,8 @@ func (this *StateCache) LookupOrMaterialize(tx uint64, path string, T any, do fu
 	//
 	// This prevents duplicated work across parallel executors, keeps state expansion
 	// deterministic, and avoids saturating the conflict-detection and storage engine.
-	if ok, cell := this.ResolveWildcardDeletion(path, T); ok {
-		this.localCells[path] = cell // Add to the cache because should logically already be there.
+	if ok, cell := this.ResolveWildcardDeletion(path, T); ok && cached {
+		this.localCells[path] = cell // Add to the cache because should have logically been there already.
 		return cell.Value(), cell, false
 	}
 
@@ -272,6 +276,17 @@ func (this *StateCache) Write(tx uint64, path string, newVal any, args ...any) (
 	return sizeDif, err
 }
 
+// Inject forcibly sets the value at path to value, bypassing normal
+// lookup logic. This is used for initializing new paths or special
+// system operations.
+//
+// Use it with SPECIAL care!!!
+func (this *StateCache) Inject(tx uint64, path string, value any) (*statecell.StateCell, error) {
+	_, cell, inCache := this.LookupOrMaterialize(tx, path, value, this.addToLocalCache, true) // Get a cell wrapper
+	err := cell.Set(tx, path, value, inCache, this)                                           // set the new value
+	return cell, err
+}
+
 // write stores a value in the state cache at the specified path, creating or materializing the associated state cell,
 // ensuring parent metadata is updated when necessary, and propagating transient status from the parent path; it fails if
 // the parent path is missing and the transaction is not SYSTEM.
@@ -284,8 +299,8 @@ func (this *StateCache) write(tx uint64, path string, value any) (*statecell.Sta
 
 		// Not a special expression, just a value update.
 		if !strings.HasSuffix(path, "*") && !strings.HasSuffix(path, "[:]") {
-			_, cell, inCache = this.LookupOrMaterialize(tx, path, value, this.AddToDict) // Get a cell wrapper
-			err = cell.Set(tx, path, value, inCache, this)                               // set the new value
+			_, cell, inCache = this.LookupOrMaterialize(tx, path, value, this.addToLocalCache, true) // Get a cell wrapper
+			err = cell.Set(tx, path, value, inCache, this)                                           // set the new value
 		}
 
 		// Update the parent path meta
@@ -295,7 +310,7 @@ func (this *StateCache) write(tx uint64, path string, value any) (*statecell.Sta
 			// their parent path exists. The parent path missing issue actually only happens beyond the context of
 			// the crdt domain. For a crdt container initated using the library api, its parent path always exists.
 			if strings.HasSuffix(parentPath, "/container/") || !this.platform.IsSysPath(parentPath) && tx != statecommon.SYSTEM {
-				_, parentMeta, inCache := this.LookupOrMaterialize(tx, parentPath, new(commutative.Path), this.AddToDict)
+				_, parentMeta, inCache := this.LookupOrMaterialize(tx, parentPath, new(commutative.Path), this.addToLocalCache, true)
 				err = parentMeta.Set(tx, path, cell.Value(), inCache, this)
 			}
 
@@ -354,7 +369,7 @@ func (this *StateCache) ReadStorage(key string, T any) (any, error) {
 }
 
 func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
-	_, stcell, _ := this.LookupForRead(tx, path, T, this.AddToDict) // Get the cell wrapper
+	_, stcell, _ := this.LookupForRead(tx, path, T, this.addToLocalCache) // Get the cell wrapper
 
 	// need to check if it is in the memory. If so gas price should be 3 instead.
 	dataSize := statecommon.MIN_READ_SIZE
@@ -477,7 +492,6 @@ func (this *StateCache) Equal(other *StateCache) bool {
 }
 
 // Export the content of the writecache to two arrays of cells.
-// One for the accesses and the other for the transitions.
 func (this *StateCache) Export(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) []*statecell.StateCell {
 	buffer := mapi.Values(this.localCells)
 	for _, proc := range preprocs {

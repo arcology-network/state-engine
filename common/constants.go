@@ -36,9 +36,6 @@ const (
 	DEFAULT_EXECUTION_PARALLELISM uint32 = 0  // System will decide the parallelism degree.
 )
 
-var WARN_OUT_OF_LOWER_LIMIT string = "Warning: Out of the lower limit!"
-var WARN_OUT_OF_UPPER_LIMIT string = "Warning: Out of the upper limit!"
-var WARN_ACCESS_CONFLICT = "Warning: State access conflict detected!"
 var WARN_EXEC_FAILED = "Warning: Execution execution failed!"
 
 // Path constants for storage paths
