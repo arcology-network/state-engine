@@ -31,8 +31,8 @@ import (
 func TestHistoryStateProxyWithLvlDB(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpDBDir := tmpDir + "/eth_storage_test_db"
-	wordState := NewLevelDBDataStore(tmpDBDir, &hashdb.Config{CleanCacheSize: 1024 * 1024 * 100})
-	paraTrie := wordState.WorldStateTrie()
+	worldState := NewLevelDBDataStore(tmpDBDir, &hashdb.Config{CleanCacheSize: 1024 * 1024 * 100})
+	paraTrie := worldState.WorldStateTrie()
 
 	key0 := []byte("test_key_0")
 	value0 := []byte("test_value_0")
@@ -60,13 +60,13 @@ func TestHistoryStateProxyWithLvlDB(t *testing.T) {
 		t.Fatalf("Failed to get the correct value for key1: expected %s, got %s", string(value1), string(outVals[1]))
 	}
 
-	root0, newParaTrie, err := wordState.backend.Commit(paraTrie, 0)
+	root0, newParaTrie, err := worldState.backend.Commit(paraTrie, 0)
 	if err != nil {
 		t.Fatalf("Failed to commit the trie: %v", err)
 	}
 
 	// Reopen the trie by its root
-	reopened, err := LoadEthTrieByRoot(wordState.backend.mainTrieDB, root0)
+	reopened, err := LoadEthTrieByRoot(worldState.backend.mainTrieDB, root0)
 	if err != nil {
 		t.Fatalf("Failed to load trie by root: %v", err)
 	}
@@ -96,13 +96,13 @@ func TestHistoryStateProxyWithLvlDB(t *testing.T) {
 		t.Fatalf("Failed to update the trie: %v", *err)
 	}
 
-	_2ndRoot, _, err := wordState.backend.Commit(newParaTrie, 0)
+	_2ndRoot, _, err := worldState.backend.Commit(newParaTrie, 0)
 	if err != nil {
 		t.Fatalf("Failed to commit the trie: %v", err)
 	}
 
 	// Reopen the second trie by its root
-	_2nd_reopened, err := LoadEthTrieByRoot(wordState.backend.mainTrieDB, _2ndRoot)
+	_2nd_reopened, err := LoadEthTrieByRoot(worldState.backend.mainTrieDB, _2ndRoot)
 	if err != nil {
 		t.Fatalf("Failed to load trie by root: %v", err)
 	}

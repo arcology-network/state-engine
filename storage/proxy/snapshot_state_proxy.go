@@ -23,25 +23,32 @@ import (
 	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
 )
 
-// EthStateVersion represents a specific version of the Ethereum world state at a given block.
+// EthStateSnapshot represents a specific version of the Ethereum world state at a given block.
 // It is mainly used for historical state queries and transaction execution.
-type EthStateVersion struct {
+type EthStateSnapshot struct {
 	*ethstg.EthWorldState
 }
 
-func NewEthStateVersion(rootHash [32]byte, backend *ethstg.EthShardTrieDB) (*EthStateVersion, error) {
+func NewEthStateSnapshot(rootHash [32]byte, backend *ethstg.EthShardTrieDB) (*EthStateSnapshot, error) {
 	ethWorldState, err := ethstg.LoadEthTrieByRoot(backend.MainTrieDB(), rootHash)
 	if err != nil {
 		return nil, err
 	}
 
-	return &EthStateVersion{
+	return &EthStateSnapshot{
 		EthWorldState: ethWorldState,
 	}, nil
 }
 
-func (this *EthStateVersion) GetWriters() []crdtcommon.Writer[*statecell.StateCell] {
+func (this *EthStateSnapshot) GetWriters() []crdtcommon.Writer[*statecell.StateCell] {
 	return []crdtcommon.Writer[*statecell.StateCell]{
 		ethstorage.NewEthStorageWriter(this.EthWorldState, -1, (&StorageProxy{}).NonTransientOnly),
 	}
+}
+
+func (this *EthStateSnapshot) SetVersion(version [32]byte) error {
+	var err error
+	this.EthWorldState, err =
+		ethstorage.LoadEthTrieByRoot(this.EthWorldState.Backend().MainTrieDB(), version)
+	return err
 }

@@ -22,7 +22,11 @@ import (
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 )
 
+// ReadWriteStore extends ReadOnlyStore with write capabilities.
+// It is an abstraction for storage backends that support both read
+// and write operations by providing writers for state cells.
 type ReadWriteStore interface {
 	crdtcommon.ReadOnlyStore
 	GetWriters() []crdtcommon.Writer[*statecell.StateCell]
+	SetVersion([32]byte) error
 }

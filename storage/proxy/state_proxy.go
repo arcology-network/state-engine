@@ -179,3 +179,6 @@ func (*StorageProxy) EthOnly(tran *statecell.StateCell) bool {
 func (*StorageProxy) All(tran *statecell.StateCell) bool {
 	return true
 }
+
+// Set the version for the storage proxy, only works for snapshot storages.
+func (this *StorageProxy) SetVersion(_ [32]byte) error { return nil }

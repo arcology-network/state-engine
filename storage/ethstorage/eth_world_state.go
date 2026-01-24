@@ -321,11 +321,6 @@ func (this *EthWorldState) WriteWorldTrie(dirtyAccounts []*Account) [32]byte {
 	return this.worldStateTrie.Hash()
 }
 
-// Calculate the root hash for the world trie
-func (this *EthWorldState) LatestWorldTrieRoot() [32]byte {
-	return this.worldStateTrie.Hash() // Store the root hash for the block
-}
-
 // ShouldPersistToEth determines whether to persist the current state to Ethereum-compatible storage.
 func (this *EthWorldState) persistToEthStore(blockNum uint64, dirtyAccounts []*Account) error {
 	this.lock.Lock()
