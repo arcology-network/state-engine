@@ -22,14 +22,14 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-type Uint32 struct{ noncommutative.Uint32 }
+type Uint32RLP struct{ noncommutative.Uint32 }
 
-func (this *Uint32) Encode() ([]byte, error) {
+func (this *Uint32RLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(*this)
 	// return codec.Uint32(this.Uint32).Encode()
 }
-func (this *Uint32) Decode(buffer []byte) any {
-	var v Uint32
+func (this *Uint32RLP) Decode(buffer []byte) any {
+	var v Uint32RLP
 	if err := rlp.DecodeBytes(buffer, &v); err != nil {
 		panic("Failed to decode uint32")
 	}

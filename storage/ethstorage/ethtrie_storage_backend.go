@@ -105,15 +105,13 @@ func (this *EthShardTrieDB) Commit(trie *ethmpt.Trie, block uint64) (common.Hash
 		return common.Hash{}, nil, errors.Join(errors.New("trie.Commit:"), err)
 	}
 
-	// this.mainTrieDB
+	// Persist the trie nodes to the database
 	if nodes != nil {
-		if err := this.mainTrieDB.Update(root, types.EmptyRootHash, block, trienode.NewWithNodeSet(nodes), nil); err != nil { // Move to DB dirty node set
+		// Apply changes to the trie database backend by MOVING to DB dirty node set
+		if err := this.mainTrieDB.Update(root, types.EmptyRootHash, block, trienode.NewWithNodeSet(nodes), nil); err != nil {
 			return common.Hash{}, nil, errors.Join(errors.New("ethdb.Update:"), err)
 		}
-
-		if err := this.mainTrieDB.Commit(root, false); err != nil {
-			return common.Hash{}, nil, errors.Join(errors.New("ethdb.Commit:"), err)
-		}
+		// Commit will be later called OUTSIDE to write to disk.
 	}
 
 	// Create a new trie for further updates.
@@ -121,5 +119,8 @@ func (this *EthShardTrieDB) Commit(trie *ethmpt.Trie, block uint64) (common.Hash
 	if err != nil {
 		err = errors.Join(errors.New("ethmpt.NewParallel:"), err)
 	}
+
+	// mux.Lock()
+	// defer mux.Unlock()
 	return root, newTrie, err
 }

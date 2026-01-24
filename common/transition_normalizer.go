@@ -61,14 +61,14 @@ import (
 type TransactionNormalizer struct {
 	gasUsed  uint64
 	Coinbase [20]byte
-	msg      *commontypes.StandardMessage
+	msgView  *commontypes.MessageView
 }
 
-func NewTransactionNormalizer(gasUsed uint64, coinbase [20]byte, msg *commontypes.StandardMessage) *TransactionNormalizer {
+func NewTransactionNormalizer(gasUsed uint64, coinbase [20]byte, msgView *commontypes.MessageView) *TransactionNormalizer {
 	return &TransactionNormalizer{
 		gasUsed:  gasUsed,
 		Coinbase: coinbase,
-		msg:      msg,
+		msgView:  msgView,
 	}
 }
 
@@ -109,12 +109,12 @@ func (this *TransactionNormalizer) Normalize(RawStateRecords []*statecell.StateC
 
 // SeparateGasTransitions extracts unconditional gas fee transfers(for execution) from from balance transitions.
 func (this *TransactionNormalizer) SeparateGasTransitions(RawStateRecords []*statecell.StateCell) []*statecell.StateCell {
-	if this.msg.Native.From == this.Coinbase {
+	if this.msgView.From == this.Coinbase {
 		return nil
 	}
 
 	gasTransitions := []*statecell.StateCell{}
-	senderString := hex.EncodeToString(this.msg.Native.From[:])
+	senderString := hex.EncodeToString(this.msgView.From[:])
 	_, senderBalance := slice.FindFirstIf(RawStateRecords, func(_ int, v *statecell.StateCell) bool { //It includes the gas fee and possible transfers.
 		return v != nil &&
 			strings.HasSuffix(*v.GetPath(), "/balance") &&
@@ -133,7 +133,7 @@ func (this *TransactionNormalizer) SeparateGasTransitions(RawStateRecords []*sta
 	if senderBalance != nil && coinbaseBalance != nil {
 		// Separate the gas fee from the balance change and generate a new transition for that. It will be immune to the execution status.
 		gasPrice := &uint256.Int{}
-		gasPrice.SetFromBig(this.msg.Native.GasPrice)
+		gasPrice.SetFromBig(this.msgView.GasPrice)
 		gasUsedInWei := new(uint256.Int).Mul(uint256.NewInt(this.gasUsed), gasPrice)
 		if debit := this.insertGasTransition(*senderBalance, gasUsedInWei, false); debit != nil {
 			gasTransitions = append(gasTransitions, debit)
@@ -161,7 +161,7 @@ func (this *TransactionNormalizer) MarkNonceConflictImmune(RawStateRecords []*st
 	nonceTransitions := []*statecell.StateCell{}
 	_, senderNonce := slice.FindFirstIf(RawStateRecords, func(_ int, v *statecell.StateCell) bool {
 		return strings.Contains(*v.GetPath(), "/nonce") &&
-			strings.Contains(*v.GetPath(), hex.EncodeToString(this.msg.Native.From[:]))
+			strings.Contains(*v.GetPath(), hex.EncodeToString(this.msgView.From[:]))
 	})
 
 	if senderNonce != nil {

@@ -20,12 +20,13 @@ package cache
 import (
 	"bytes"
 
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 )
 
 // PreloadMatched preloads the paths that match the wildcard delete path that are about to be deleted by the
 // the current write operation.
-func (this *StateCache) ResolveWildcardDeletion(path string, T any) (bool, *statecell.StateCell) {
+func (this *StateCache) ResolveWildcardDeletion(path string, T crdtcommon.CRDT) (bool, *statecell.StateCell) {
 	// Delete only for now.
 	for _, wildcardPath := range this.pendingWildcardDeletes {
 		if len(path) < len(wildcardPath.Second) {

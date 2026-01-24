@@ -50,7 +50,7 @@ func CreateAccountInStore(accts ...[20]byte) (*stateengine.StateStore, error) {
 
 	committer := statecommitter.NewStateCommitter(sstore, sstore.GetWriters())
 	committer.Import(acctTrans)
-	committer.Precommit([]uint64{1})
+	committer.DebugPrecommit([]uint64{1})
 	committer.DebugCommit(10)
 	return sstore, nil
 }
@@ -67,7 +67,7 @@ func InjectTransitions(sstore *stateengine.StateStore, keys []string, vals []crd
 	acctTrans := writeCache.Export(statecell.Sorter)
 	committer := statecommitter.NewStateCommitter(sstore, sstore.GetWriters())
 	committer.Import(acctTrans)
-	committer.Precommit([]uint64{1})
+	committer.DebugPrecommit([]uint64{1})
 	committer.DebugCommit(10) //block height 10
 	return aggregatedErr
 }

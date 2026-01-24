@@ -25,8 +25,8 @@ import (
 
 func TestStringStorageCodec(t *testing.T) {
 	v := noncommutative.NewString("test string")
-	encoded, _ := (&String{String: *v}).Encode()
-	decoded := new(String).Decode(encoded).(*noncommutative.String)
+	encoded, _ := (&StringRLP{String: *v}).Encode()
+	decoded := new(StringRLP).Decode(encoded).(*noncommutative.String)
 
 	if !decoded.Equal(v) {
 		t.Fatal("decode mismatch")

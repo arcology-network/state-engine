@@ -22,14 +22,14 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-type String struct{ noncommutative.String }
+type StringRLP struct{ noncommutative.String }
 
-func (this *String) Encode() ([]byte, error) {
+func (this *StringRLP) Encode() ([]byte, error) {
 	buffer, err := rlp.EncodeToBytes(this.String)
 	return buffer, err
 }
 
-func (this *String) Decode(buffer []byte) any {
+func (this *StringRLP) Decode(buffer []byte) any {
 	var v noncommutative.String
 	if err := rlp.DecodeBytes(buffer, &v); err != nil {
 		panic("Failed to decode string")

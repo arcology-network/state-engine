@@ -129,7 +129,11 @@ func (this *Account) GetCodeHash() [32]byte {
 // The function is used to prove the storage of an account. It only works with
 // NATIVE storage for now.
 func (this *Account) IsAccountStorageProvable(key string) ([]byte, []string, error) {
-	decoded, _, _ := decodeHash(key)
+	decoded, _, err := decodeHash(key)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	keyBytes := crypto.Keccak256(decoded[:])
 	data, err := this.storageTrie.Get(keyBytes) // Get the storage value
 
@@ -156,20 +160,27 @@ func (this *Account) IsAccountStorageProvable(key string) ([]byte, []string, err
 
 // The function parses the key in a forward slash separated format into a hex
 // string that can be accepted by the storage trie.
-func (this *Account) ToStorageKey(key string) string {
+func (this *Account) ToStorageKey(key string) []byte {
 	if k := statecommon.GetPathUnder(key, "/storage/native/"); len(k) > 0 {
 		kstr, err := hexutil.Decode(k) // For native storage, the key is hex encoded.
 		if err != nil {
 			panic(err)
 		}
-
-		kstr = this.Hash(kstr) // For native storage, the key is the hash of the key with prefix.
-		return string(kstr)
+		return crypto.Keccak256(kstr) // For native storage, the key is the hash of the key with prefix.
 	}
-	return string(this.Hash([]byte(key))) // For non-native storage, the key is the hash of the key with prefix.
+	return this.Hash([]byte(key)) // For non-native storage, the key is the hash of the key with prefix.
+}
+
+// Check if the path is the root of the account.
+func (this *Account) isAccountRoot(path string) bool {
+	return len(path) == statecommon.ETH_ACCOUNT_FULL_LENGTH+1
 }
 
 func (this *Account) Has(path string) bool {
+	if this.isAccountRoot(path) {
+		return true // Account itself
+	}
+
 	if strings.HasSuffix(path, statecommon.PATH_BALANCE) ||
 		strings.HasSuffix(path, statecommon.PATH_NONCE) {
 		return true
@@ -179,11 +190,12 @@ func (this *Account) Has(path string) bool {
 		return len(this.code) > 0
 	}
 
-	buffer, _ := this.storageTrie.Get([]byte(this.ToStorageKey(path)))
+	buffer, _ := this.storageTrie.Get(this.ToStorageKey(path))
 	return len(buffer) > 0
 }
 
-func (this *Account) Retrieve(path string, T any) (interface{}, error) {
+func (this *Account) Retrieve(path string, T any) (any, error) {
+	// Special handling for balance.
 	if strings.HasSuffix(path, statecommon.PATH_BALANCE) {
 		balance, _ := uint256.FromBig(this.StateAccount.Balance.ToBig())
 		v := commutative.NewUnboundedU256()
@@ -191,12 +203,14 @@ func (this *Account) Retrieve(path string, T any) (interface{}, error) {
 		return v, nil
 	}
 
+	// Special handling for nonce.
 	if strings.HasSuffix(path, statecommon.PATH_NONCE) {
 		v := commutative.NewUnboundedUint64()
 		v.SetValue(this.StateAccount.Nonce)
 		return v, nil
 	}
 
+	// Special handling for code.
 	if strings.HasSuffix(path, statecommon.PATH_CODE) {
 		var err error
 		if this.code == nil {
@@ -207,8 +221,8 @@ func (this *Account) Retrieve(path string, T any) (interface{}, error) {
 		return noncommutative.NewBytes(this.code), nil
 	}
 
-	k := this.ToStorageKey(path)
-	buffer, err := this.storageTrie.Get([]byte(k))
+	// A normal storage value.
+	buffer, err := this.storageTrie.Get(this.ToStorageKey(path))
 	if len(buffer) == 0 {
 		return nil, nil
 	}
@@ -217,8 +231,8 @@ func (this *Account) Retrieve(path string, T any) (interface{}, error) {
 		return T, nil
 	}
 
+	// Decode the value based on the type T representing the CRDT type.
 	return ethrlp.RlpCodec{}.Decode(path, buffer, T), err
-	// return T.(crdtcommon.CRDT).StorageDecode(key, buffer), err
 }
 
 // Update the account's storage trie with the given keys and values.
@@ -266,7 +280,7 @@ func (this *Account) UpdateAccountStorageTrie(keys []string, typedVals []crdtcom
 	// Encode the keys
 	numThd := common.IfThen(len(keys) < 1024, 4, 8)
 	encodedKeys := slice.ParallelTransform(keys, numThd, func(i int, _ string) []byte {
-		return []byte(this.ToStorageKey(keys[i])) // Remove the prefix to get the keys.
+		return this.ToStorageKey(keys[i]) // Remove the prefix to get the keys.
 	})
 
 	// Encode the values
@@ -310,11 +324,24 @@ func (this *Account) Encode() []byte {
 	return encoded
 }
 
-func (*Account) Decode(buffer []byte) *Account {
+func (*Account) Decode(buffer []byte) (*Account, error) {
 	var acctState types.StateAccount
-	rlp.DecodeBytes(buffer, &acctState)
-	return &Account{StateAccount: acctState}
+	if err := rlp.DecodeBytes(buffer, &acctState); err != nil {
+		return nil, err
+	}
+	return &Account{StateAccount: acctState}, nil
 }
+
+// CollectDirtyNodes collects the changes and groups them into
+// batches based on the shard database they belong to.
+// func (this *Account) CollectDirtyNodes(block uint64) error {
+// 	var err error
+// 	if this.trieDirty {
+// 		_, this.storageTrie, err = this.backend.Commit(this.storageTrie, block) // Commit the change to the storage trie.
+// 		this.trieDirty = false
+// 	}
+// 	return err // Write to DB
+// }
 
 // Write the DB
 func (this *Account) Commit(block uint64) error {

@@ -193,7 +193,7 @@ func (this *StateCache) ExistsInParent(tx uint64, path string, do func(*statecel
 
 // Get the raw value directly, put it in an empty cell without recording
 // the access. `Won't` update the localCells.
-func (this *StateCache) LookupForRead(tx uint64, path string, T any, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
+func (this *StateCache) LookupForRead(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
 	// If the path doesn't exist in the parent snapshot at all (no committed
 	// value, no wildcard/container inheritance), just return an empty,
 	// non-cached cell.
@@ -216,7 +216,7 @@ func (this *StateCache) LookupForRead(tx uint64, path string, T any, do func(*st
 //
 // It may insert a new StateCell into localCells when a wildcard/container
 // delete implies a *logical* deleted state for this path.
-func (this *StateCache) LookupOrMaterialize(tx uint64, path string, T any, do func(*statecell.StateCell), cached bool) (any, *statecell.StateCell, bool) {
+func (this *StateCache) LookupOrMaterialize(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell), cached bool) (any, *statecell.StateCell, bool) {
 	// if tx == 0 {
 	// 	fmt.Println("Tx:", tx, "Path:", path)
 	// }
@@ -263,8 +263,8 @@ func (this *StateCache) LookupOrMaterialize(tx uint64, path string, T any, do fu
 }
 
 // Write applies newVal to path, tracks size delta, and invokes optional callback.
-func (this *StateCache) Write(tx uint64, path string, newVal any, args ...any) (int64, error) {
-	if newVal != nil && newVal.(crdtcommon.CRDT).TypeID() == uint8(reflect.Invalid) { // Neither a valid replacement nor a delete operation.
+func (this *StateCache) Write(tx uint64, path string, newVal crdtcommon.CRDT, args ...any) (int64, error) {
+	if newVal != nil && newVal.TypeID() == uint8(reflect.Invalid) { // Neither a valid replacement nor a delete operation.
 		return 0, errors.New("Error: Unknown data type !")
 	}
 
@@ -281,16 +281,16 @@ func (this *StateCache) Write(tx uint64, path string, newVal any, args ...any) (
 // system operations.
 //
 // Use it with SPECIAL care!!!
-func (this *StateCache) Inject(tx uint64, path string, value any) (*statecell.StateCell, error) {
-	_, cell, inCache := this.LookupOrMaterialize(tx, path, value, this.addToLocalCache, true) // Get a cell wrapper
-	err := cell.Set(tx, path, value, inCache, this)                                           // set the new value
+func (this *StateCache) Inject(tx uint64, path string, v crdtcommon.CRDT) (*statecell.StateCell, error) {
+	_, cell, inCache := this.LookupOrMaterialize(tx, path, v, this.addToLocalCache, true) // Get a cell wrapper
+	err := cell.Set(tx, path, v, inCache, this)                                           // set the new value
 	return cell, err
 }
 
 // write stores a value in the state cache at the specified path, creating or materializing the associated state cell,
 // ensuring parent metadata is updated when necessary, and propagating transient status from the parent path; it fails if
 // the parent path is missing and the transaction is not SYSTEM.
-func (this *StateCache) write(tx uint64, path string, value any) (*statecell.StateCell, error) {
+func (this *StateCache) write(tx uint64, path string, value crdtcommon.CRDT) (*statecell.StateCell, error) {
 	parentPath, _ := statecommon.GetParentPath(path)
 	cell := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default cell wrapper
 	if this.IfExists(parentPath) || tx == statecommon.SYSTEM {    // The parent path exists or to inject the path directly
@@ -328,7 +328,7 @@ func (this *StateCache) write(tx uint64, path string, value any) (*statecell.Sta
 
 // Get the raw value directly WITHOUT tracking the accessing record.
 // Users need to count access themselves.
-func (this *StateCache) Retrieve(path string, T any) (any, error) {
+func (this *StateCache) Retrieve(path string, T crdtcommon.CRDT) (any, error) {
 	typedv, _, _ := this.LookupForRead(statecommon.SYSTEM, path, T, nil)
 	if typedv == nil || typedv.(crdtcommon.CRDT).IsDeltaApplied() {
 		return typedv, nil
@@ -352,7 +352,7 @@ func (this *StateCache) Retrieve(path string, T any) (any, error) {
 
 // The load the data from the readonlyBackend. Since the state is already isCommitted, it is read-only.
 // No need to add it to the localCells or keep track of the access.
-func (this *StateCache) LoadFromCommitted(tx uint64, path string, T any) *statecell.StateCell {
+func (this *StateCache) LoadFromCommitted(tx uint64, path string, T crdtcommon.CRDT) *statecell.StateCell {
 	var typedv any
 	if readonlyBackend := this.ReadOnlyStore(); readonlyBackend != nil {
 		typedv, _ = readonlyBackend.Retrieve(path, T) // The readonlyBackend could also be another instance of StateCache.
@@ -361,14 +361,14 @@ func (this *StateCache) LoadFromCommitted(tx uint64, path string, T any) *statec
 }
 
 // This function specifically retrieves the value from the readonlyBackend without any tracking.
-func (this *StateCache) ReadStorage(key string, T any) (any, error) {
+func (this *StateCache) ReadBackend(key string, T crdtcommon.CRDT) (any, error) {
 	if this.readonlyBackend != nil {
-		return this.readonlyBackend.ReadStorage(key, T)
+		return this.readonlyBackend.ReadBackend(key, T)
 	}
 	return nil, errors.New("Error: The readonlyBackend is nil")
 }
 
-func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
+func (this *StateCache) Read(tx uint64, path string, T crdtcommon.CRDT) (any, any, uint64) {
 	_, stcell, _ := this.LookupForRead(tx, path, T, this.addToLocalCache) // Get the cell wrapper
 
 	// need to check if it is in the memory. If so gas price should be 3 instead.
@@ -381,7 +381,7 @@ func (this *StateCache) Read(tx uint64, path string, T any) (any, any, uint64) {
 
 // DiffSize returns the memory size delta between the current cell value and newVal.
 // This is used for tracking memory usage changes in the StateCache and calculating fees.
-func (this *StateCache) DiffSize(tx uint64, path string, newVal any) int64 {
+func (this *StateCache) DiffSize(tx uint64, path string, newVal crdtcommon.CRDT) int64 {
 	oldSize := int64(0)
 	if oldVal, _, _ := this.LookupForRead(tx, path, newVal, nil); oldVal != nil {
 		oldSize += int64(oldVal.(crdtcommon.CRDT).MemSize())
@@ -552,13 +552,13 @@ func (this *StateCache) Checksum() [32]byte {
 
 // Read the value from the readonlyBackend. This function is used for
 // GetCommittedState() in Eth interface for gas refund related code.
-func (this *StateCache) ReadCommitted(tx uint64, key string, T any) (any, uint64) {
+func (this *StateCache) ReadCommitted(tx uint64, key string, T crdtcommon.CRDT) (any, uint64) {
 	// Just to leave a record for conflict detection. This is different from the original Ethereum implementation.
 	// In Ethereum, there is no such concept as the multiprocessor，so the isCommitted state can only come from the
 	// previous block or the transactions before the current one. But in the multiprocessor, the isCommitted state
 	// may also come from the parent thread. So we need to leave a record for the conflict detection in case that
 	// threads spawned by multiple parent are trying to access the same path.
-	if v := this.LoadFromCommitted(tx, key, this); v != nil { // Check to see if the path exists in the readonlyBackend.
+	if v := this.LoadFromCommitted(tx, key, T); v != nil { // Check to see if the path exists in the readonlyBackend.
 		return v.Get(tx, key, nil), 0
 	}
 	return nil, 0

@@ -34,11 +34,11 @@ import (
 type StateStore struct {
 	*cache.StateCache // execution cache, cleared at the end of each block.
 	*committer.StateCommitter
-	backend *proxy.StorageProxy
+	backend proxy.ReadWriteStore
 }
 
 // New creates a new StateCommitter instance.
-func NewStateStore(backend *proxy.StorageProxy) *StateStore {
+func NewStateStore(backend proxy.ReadWriteStore) *StateStore {
 	store := &StateStore{
 		backend: backend,
 		StateCache: cache.NewStateCache(
@@ -63,12 +63,12 @@ func NewStateStore(backend *proxy.StorageProxy) *StateStore {
 
 	committer := committer.NewStateCommitter(store, store.GetWriters())
 	committer.Import(initTrans)
-	committer.Precommit([]uint64{statecommon.SYSTEM})
+	committer.DebugPrecommit([]uint64{statecommon.SYSTEM})
 	committer.DebugCommit(0)
 	return store
 }
 
-func (this *StateStore) Backend() *proxy.StorageProxy        { return this.backend }
+func (this *StateStore) Backend() proxy.ReadWriteStore        { return this.backend }
 func (this *StateStore) Cache() *cache.StateCache            { return this.StateCache }
 func (this *StateStore) Import(trans []*statecell.StateCell) { this.StateCommitter.Import(trans) }
 func (this *StateStore) Preload(key []byte) any {

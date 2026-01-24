@@ -1,5 +1,5 @@
 /*
- *   Copyright (c) 2024 Arcology Network
+ *   Copyright (c) 2026 Arcology Network
 
  *   This program is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by
@@ -15,26 +15,14 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package noncommutativecodec
+package proxy
 
 import (
-	"math/big"
-
-	"github.com/arcology-network/common-lib/common"
-	noncommutative "github.com/arcology-network/common-lib/crdt/noncommutative"
-	"github.com/ethereum/go-ethereum/rlp"
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 )
 
-type Int64RLP struct{ noncommutative.Int64 }
-
-func (this *Int64RLP) Encode() ([]byte, error) {
-	return rlp.EncodeToBytes(new(big.Int).SetInt64(int64(*this.Int64.Value().(*noncommutative.Int64))))
-}
-
-func (this *Int64RLP) Decode(buffer []byte) any {
-	var v big.Int
-	if err := rlp.DecodeBytes(buffer, &v); err != nil {
-		panic("Failed to decode int64")
-	}
-	return common.New(noncommutative.Int64(v.Int64()))
+type ReadWriteStore interface {
+	crdtcommon.ReadOnlyStore
+	GetWriters() []crdtcommon.Writer[*statecell.StateCell]
 }

@@ -25,9 +25,9 @@ import (
 	"github.com/holiman/uint256"
 )
 
-type U256 struct{ commutative.U256 }
+type U256RLP struct{ commutative.U256 }
 
-func (this *U256) Encode() ([]byte, error) {
+func (this *U256RLP) Encode() ([]byte, error) {
 	if this.HasLimits() {
 		min, max := this.Limits()
 		return rlp.EncodeToBytes([]any{this.Value(), min, max})
@@ -36,13 +36,13 @@ func (this *U256) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(v.ToBig())
 }
 
-func (*U256) Decode(buffer []byte) any {
+func (*U256RLP) Decode(buffer []byte) any {
 	this := commutative.NewUnboundedU256().(*commutative.U256)
 
 	var arr []any
 	err := rlp.DecodeBytes(buffer, &arr)
 
-	// U256 can be encoded as big.Int directly to save space, or with limits
+	// U256RLP can be encoded as big.Int directly to save space, or with limits
 	// So when error occurs, we try to decode as a single big.Int value, because
 	// the error is likely due to that.
 	if err != nil {

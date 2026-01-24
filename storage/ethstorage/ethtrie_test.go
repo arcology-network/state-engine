@@ -146,7 +146,10 @@ func TestAccountCode(t *testing.T) {
 	}
 	buffer := acct.Encode()
 
-	decodeAcct := (&Account{}).Decode(buffer)
+	decodeAcct, err := (&Account{}).Decode(buffer)
+	if err != nil {
+		t.Error("Error: Failed to decode account!!")
+	}
 	if state.Balance.Uint64() != decodeAcct.Balance.Uint64() {
 		t.Error("Error: Blance mismatched!!")
 	}

@@ -32,6 +32,8 @@ import (
 type EthIndexer struct {
 	filter  func(tran *statecell.StateCell) bool // Post processing function to filter transitions.
 	Version int64
+
+	// Transitions indexed by account address. All the transitions belong to the same account are grouped together.
 	*indexer.UnorderedIndexer[[20]byte, *statecell.StateCell, *associative.Pair[*Account, []*statecell.StateCell]]
 	dirtyAccounts []*Account
 	// err           error
@@ -73,6 +75,7 @@ func (this *EthIndexer) Import(trans []*statecell.StateCell) {
 }
 
 // Remove the nil transitions from the index, because they are set by
+// the finalizer.
 func (this *EthIndexer) Finalize() {
 	this.ParallelForeachDo(func(_ [20]byte, v **associative.Pair[*Account, []*statecell.StateCell]) {
 		slice.RemoveIf(&((**v).Second), func(_ int, v *statecell.StateCell) bool { return v.GetPath() == nil })
@@ -80,7 +83,11 @@ func (this *EthIndexer) Finalize() {
 
 	// Remove accounts that have no transitions left after cleanning up
 	pairsByAccount := this.UnorderedIndexer.Values()
-	slice.RemoveIf(&pairsByAccount, func(_ int, v *associative.Pair[*Account, []*statecell.StateCell]) bool { return len(v.Second) == 0 })
+	slice.RemoveIf(&pairsByAccount,
+		func(_ int, v *associative.Pair[*Account, []*statecell.StateCell]) bool {
+			return len(v.Second) == 0
+		},
+	)
 }
 
 // Merge indexers so they can be updated at once.

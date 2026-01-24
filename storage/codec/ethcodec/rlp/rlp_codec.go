@@ -35,22 +35,28 @@ func (RlpCodec) Encode(key string, v any) ([]byte, error) {
 	}
 
 	switch v := v.(type) {
+	// Commutative types
 	case *crdtc.Uint64:
-		return (&commcodec.Uint64{Uint64: *(v)}).Encode() // For nonce.
+		return (&commcodec.Uint64RLP{Uint64: *(v)}).Encode() // For nonce.
 	case *crdtc.U256:
-		return (&commcodec.U256{U256: *(v)}).Encode()
+		return (&commcodec.U256RLP{U256: *(v)}).Encode()
 	case *crdtc.Int64:
-		return (&commcodec.Int64{Int64: *(v)}).Encode()
-	case *crdtnc.Int64:
-		return (&noncommcodec.Int64{Int64: *(v)}).Encode()
-	case *crdtnc.Bigint:
-		return (&noncommcodec.Bigint{Bigint: *(v)}).Encode()
-	case *crdtnc.Bytes:
-		return (&noncommcodec.Bytes{Bytes: *(v)}).Encode()
-	case *crdtnc.String:
-		return (&noncommcodec.String{String: *(v)}).Encode()
+		return (&commcodec.Int64RLP{Int64: *(v)}).Encode()
 	case *crdtc.Path:
-		return (&commcodec.Path{Path: *(v)}).Encode()
+		return (&commcodec.PathRLP{Path: *(v)}).Encode()
+
+	// Non-commutative types
+	case *crdtnc.Int64:
+		return (&noncommcodec.Int64RLP{Int64: *(v)}).Encode()
+	case *crdtnc.Uint64:
+		return (&noncommcodec.Uint64RLP{Uint64: *(v)}).Encode()
+	case *crdtnc.Bigint:
+		return (&noncommcodec.BigintRLP{Bigint: *(v)}).Encode()
+	case *crdtnc.Bytes:
+		return (&noncommcodec.BytesRLP{Bytes: *(v)}).Encode()
+	case *crdtnc.String:
+		return (&noncommcodec.StringRLP{String: *(v)}).Encode()
+
 	default:
 		panic("RlpCodec Encoder: unsupported type for RlpCodec codec")
 	}
@@ -58,22 +64,28 @@ func (RlpCodec) Encode(key string, v any) ([]byte, error) {
 
 func (RlpCodec) Decode(key string, buffer []byte, T any) any {
 	switch T.(type) {
-	case crdtc.Uint64:
-		return new(commcodec.Uint64).Decode(buffer)
-	case crdtc.U256:
-		return new(commcodec.U256).Decode(buffer)
-	case crdtc.Int64:
-		return new(commcodec.Int64).Decode(buffer)
-	case crdtnc.Int64:
-		return new(noncommcodec.Int64).Decode(buffer)
-	case crdtnc.Bigint:
-		return new(noncommcodec.Bigint).Decode(buffer)
-	case crdtnc.Bytes:
-		return new(noncommcodec.Bytes).Decode(buffer)
-	case crdtnc.String:
-		return new(noncommcodec.String).Decode(buffer)
-	case crdtc.Path:
-		return new(commcodec.Path).Decode(buffer)
+	// Commutative types
+	case *crdtc.Uint64:
+		return new(commcodec.Uint64RLP).Decode(buffer)
+	case *crdtc.U256:
+		return new(commcodec.U256RLP).Decode(buffer)
+	case *crdtc.Int64:
+		return new(commcodec.Int64RLP).Decode(buffer)
+	case *crdtc.Path:
+		return new(commcodec.PathRLP).Decode(buffer)
+
+	// Non-commutative types
+	case *crdtnc.Int64:
+		return new(noncommcodec.Int64RLP).Decode(buffer)
+	case *crdtnc.Uint64:
+		return new(noncommcodec.Uint64RLP).Decode(buffer)
+	case *crdtnc.Bigint:
+		return new(noncommcodec.BigintRLP).Decode(buffer)
+	case *crdtnc.Bytes:
+		return new(noncommcodec.BytesRLP).Decode(buffer)
+	case *crdtnc.String:
+		return new(noncommcodec.StringRLP).Decode(buffer)
+
 	default:
 		panic("RlpCodec Decoder: unsupported type for RlpCodec codec")
 	}

@@ -95,7 +95,7 @@ func (this *LiveStorage) IfExists(key string) bool {
 }
 
 // Get from the underlying storage directly.
-func (this *LiveStorage) ReadStorage(key string, T any) (any, error) {
+func (this *LiveStorage) ReadBackend(key string, T any) (any, error) {
 	if this.db == nil {
 		return nil, errors.New("Error: DB not found")
 	}
@@ -117,7 +117,7 @@ func (this *LiveStorage) Retrieve(key string, T any) (any, error) {
 		return *v, nil
 	}
 
-	v, err := this.ReadStorage(key, T)
+	v, err := this.ReadBackend(key, T)
 	if err == nil && T != nil {
 		this.cache.Set(key, v) //update to the local cache and add all the missing values to the cache
 	}

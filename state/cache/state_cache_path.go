@@ -45,7 +45,7 @@ where hierarchical or path-based data organization is required, such as in stora
 systems or databases.
 */
 
-func (this *StateCache) IndexOf(tx uint64, path string, key any, T any) (uint64, uint64) {
+func (this *StateCache) IndexOf(tx uint64, path string, key any, T crdtcommon.CRDT) (uint64, uint64) {
 	if !common.IsPath(path) {
 		return math.MaxUint64, 0 //, errors.New("Error: Not a path!!!")
 	}
@@ -63,7 +63,7 @@ func (this *StateCache) IndexOf(tx uint64, path string, key any, T any) (uint64,
 
 // KeyAt returns the index of a give key and the the opertion fee under a path.
 // If the path does not exist, it returns an error. The second return value is the operation fee.
-func (this *StateCache) KeyAt(tx uint64, path string, index any, T any) (string, uint64) {
+func (this *StateCache) KeyAt(tx uint64, path string, index any, T crdtcommon.CRDT) (string, uint64) {
 	if !common.IsPath(path) {
 		return "", stgcommon.MIN_READ_SIZE //, errors.New("Error: Not a path!!!")
 	}
@@ -81,7 +81,7 @@ func (this *StateCache) KeyAt(tx uint64, path string, index any, T any) (string,
 }
 
 // Peek the value under a path. The difference between Peek and Read is that Peek does not have access metadata attached.
-func (this *StateCache) Peek(path string, T any) (any, any, uint64) {
+func (this *StateCache) Peek(path string, T crdtcommon.CRDT) (any, any, uint64) {
 	if v, _, _ := this.LookupForRead(stgcommon.SYSTEM, path, T, nil); v != nil {
 		originalV, _, _ := v.(crdtcommon.CRDT).Get()
 		return originalV, v, v.(crdtcommon.CRDT).MemSize()
@@ -90,13 +90,13 @@ func (this *StateCache) Peek(path string, T any) (any, any, uint64) {
 }
 
 // This function looks up the committed value in the DB instead of the cache.
-func (this *StateCache) PeekCommitted(path string, T any) (any, uint64) {
-	v, _ := this.readonlyBackend.ReadStorage(path, T)
+func (this *StateCache) PeekCommitted(path string, T crdtcommon.CRDT) (any, uint64) {
+	v, _ := this.readonlyBackend.ReadBackend(path, T)
 	return v, 0
 }
 
 // This function looks up the value and carries out the operation on the value directly.
-func (this *StateCache) DoReadOnly(tx uint64, path string, doer any, T any) (any, error) {
+func (this *StateCache) DoReadOnly(tx uint64, path string, doer any, T crdtcommon.CRDT) (any, error) {
 	_, statecell, _ := this.LookupForRead(tx, path, T, this.addToLocalCache) // Only if the doer is an read only operation, the value will be added to the cache.
 	return statecell.Do(tx, path, doer), nil
 }
@@ -160,7 +160,7 @@ func (this *StateCache) Max(tx uint64, path string, idx uint64) (any, uint64, er
 }
 
 // Read th Nth element under a path
-func (this *StateCache) ReadAt(tx uint64, path string, idx uint64, T any) (any, uint64, error) {
+func (this *StateCache) ReadAt(tx uint64, path string, idx uint64, T crdtcommon.CRDT) (any, uint64, error) {
 	if key, dataSize, err := this.getKeyByIdx(tx, path, idx); err == nil && key != nil {
 		v, _, readGas := this.Read(tx, key.(string), T)
 		return v, dataSize + readGas, nil
@@ -170,7 +170,7 @@ func (this *StateCache) ReadAt(tx uint64, path string, idx uint64, T any) (any, 
 }
 
 // Read th Nth element under a path
-func (this *StateCache) PopBack(tx uint64, path string, T any) (any, int64, error) {
+func (this *StateCache) PopBack(tx uint64, path string, T crdtcommon.CRDT) (any, int64, error) {
 	if !common.IsPath(path) {
 		return nil, int64(stgcommon.MIN_READ_SIZE), errors.New("Error: Not a path!!!")
 	}
@@ -220,7 +220,7 @@ func (this *StateCache) PopBack(tx uint64, path string, T any) (any, int64, erro
 // Eventually, the key is used to read or write the data. This solution has some issues.
 // To get the key by index, the keys in container must be finalized first. If the path
 // has any update at this moment, this operation will generate a path read with will conflict with the path write.
-func (this *StateCache) WriteAt(tx uint64, path string, idx uint64, T any) (int64, error) {
+func (this *StateCache) WriteAt(tx uint64, path string, idx uint64, T crdtcommon.CRDT) (int64, error) {
 	if !common.IsPath(path) {
 		return int64(stgcommon.MIN_WRITE_SIZE), errors.New("Error: Not a path!!!")
 	}

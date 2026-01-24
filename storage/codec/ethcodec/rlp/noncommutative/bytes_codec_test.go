@@ -25,8 +25,8 @@ import (
 
 func TestBytesStorageCodec(t *testing.T) {
 	v := noncommutative.NewBytes([]byte{0x01, 0x02, 0x03, 0x04}).(*noncommutative.Bytes)
-	encoded, _ := (&Bytes{Bytes: *v}).Encode()
-	decoded := new(Bytes).Decode(encoded).(*noncommutative.Bytes)
+	encoded, _ := (&BytesRLP{Bytes: *v}).Encode()
+	decoded := new(BytesRLP).Decode(encoded).(*noncommutative.Bytes)
 
 	if !decoded.Equal(v) {
 		t.Fatal("decode mismatch")

@@ -103,11 +103,11 @@ func (this *StorageProxy) ExecStore() *livebackend.LiveStorage { return this.exe
 func (this *StorageProxy) EthStore() *ethstg.EthWorldState     { return this.ethStorage }  // Eth storage
 
 // Check if the key exists in the execution storage.
-func (this *StorageProxy) ReadStorage(key string, v any) (any, error) {
+func (this *StorageProxy) ReadBackend(key string, v crdtcommon.CRDT) (any, error) {
 	return this.Retrieve(key, v)
 }
 
-func (this *StorageProxy) Retrieve(key string, v any) (any, error) {
+func (this *StorageProxy) Retrieve(key string, v crdtcommon.CRDT) (any, error) {
 	if val, ok := this.execCache.Get(key); ok { // Check the cache first
 		return val, nil
 	}
@@ -136,30 +136,33 @@ func (this *StorageProxy) Write(key string, v any) error {
 // Get the stores that can be
 func (this *StorageProxy) GetWriters() []crdtcommon.Writer[*statecell.StateCell] {
 	return []crdtcommon.Writer[*statecell.StateCell]{
-		livecache.NewLiveCacheWriter(this.execCache, -1, this.RemoveTransients),
-		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.EthOnly),
-		livebackend.NewLiveStorageWriter(this.execBackend, -1, this.RemoveTransients),
+		livecache.NewLiveCacheWriter(this.execCache, -1, this.NonTransientOnly),
+		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.NonTransientOnly),
+		livebackend.NewLiveStorageWriter(this.execBackend, -1, this.NonTransientOnly),
 	}
 }
 
 // Get the stores that can be
 func (this *StorageProxy) SyncWriters() []crdtcommon.Writer[*statecell.StateCell] {
 	return []crdtcommon.Writer[*statecell.StateCell]{
-		livecache.NewLiveCacheWriter(this.execCache, -1, this.RemoveTransients),
+		livecache.NewLiveCacheWriter(this.execCache, -1, this.NonTransientOnly),
 	}
 }
 
 func (this *StorageProxy) AsyncWriters() []crdtcommon.Writer[*statecell.StateCell] {
 	return []crdtcommon.Writer[*statecell.StateCell]{
-		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.EthOnly),
-		livebackend.NewLiveStorageWriter(this.execBackend, -1, this.RemoveTransients),
+		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.NonTransientOnly),
+		livebackend.NewLiveStorageWriter(this.execBackend, -1, this.NonTransientOnly),
 	}
 }
 
 // Filter out the transitions that are not needed to be persisted.
-func (this *StorageProxy) RemoveTransients(tran *statecell.StateCell) bool {
+func (this *StorageProxy) NonTransientOnly(tran *statecell.StateCell) bool {
 	// System paths only get reset if they are transient.
-	if v := (*tran).Value(); v != nil && v.(crdtcommon.CRDT).TypeID() == commutative.PATH && v.(*commutative.Path).IsBlockBound() && this.platform.IsSysPath(*(*tran).GetPath()) {
+	if v := (*tran).Value(); v != nil &&
+		v.(crdtcommon.CRDT).TypeID() == commutative.PATH &&
+		v.(*commutative.Path).IsBlockBound() &&
+		this.platform.IsSysPath(*(*tran).GetPath()) {
 		v.(*commutative.Path).Reset()
 	}
 
@@ -168,6 +171,11 @@ func (this *StorageProxy) RemoveTransients(tran *statecell.StateCell) bool {
 }
 
 // Filter out the transitions that are not needed to be persisted.
-func (this *StorageProxy) EthOnly(tran *statecell.StateCell) bool {
+func (*StorageProxy) EthOnly(tran *statecell.StateCell) bool {
 	return statecommon.ShouldPersistToEth(*tran.GetPath())
+}
+
+// Allow all transitions to be written.
+func (*StorageProxy) All(tran *statecell.StateCell) bool {
+	return true
 }

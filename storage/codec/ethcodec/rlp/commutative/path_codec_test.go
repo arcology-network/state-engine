@@ -32,12 +32,12 @@ func TestPath(t *testing.T) {
 	inPath.SetAdded([]string{"+01", "+001", "+002", "+002"})
 	inPath.InsertRemoved([]string{"-091", "-0092", "-092", "-092", "-097"})
 
-	buffer, err := (&Path{Path: *inPath}).Encode()
+	buffer, err := (&PathRLP{Path: *inPath}).Encode()
 	if err != nil {
 		t.Error("Encoding failed:", err)
 	}
 
-	outPath := new(Path).Decode(buffer)
+	outPath := new(PathRLP).Decode(buffer)
 
 	if !inPath.Equal(outPath) {
 		t.Error("Error: Don't match!!", inPath, outPath)

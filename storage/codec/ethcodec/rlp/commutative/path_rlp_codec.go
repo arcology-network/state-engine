@@ -23,13 +23,13 @@ import (
 	// performance "github.com/arcology-network/common-lib/mhasher"
 )
 
-type Path struct{ commutative.Path }
+type PathRLP struct{ commutative.Path }
 
-func (this *Path) Encode() ([]byte, error) {
+func (this *PathRLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(this.Path.Encode())
 }
 
-func (this *Path) Decode(buffer []byte) any {
+func (this *PathRLP) Decode(buffer []byte) any {
 	var decoded []byte
 	if err := rlp.DecodeBytes(buffer, &decoded); err != nil {
 		panic(err)

@@ -1,5 +1,5 @@
 /*
-*   Copyright (c) 2025 Arcology Network
+*   Copyright (c) 2026 Arcology Network
 
 *   This program is free software: you can redistribute it and/or modify
 *   it under the terms of the GNU General Public License as published by
@@ -17,66 +17,31 @@
 package proxy
 
 import (
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
+	"github.com/arcology-network/state-engine/storage/ethstorage"
 	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
-
-	// "github.com/arcology-network/state-engine/storage/proxy"
-	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 
-// HistoricalExecStorage provides a replay-based execution-time storage view
-// for historical blocks. This storage view is mainly used to support read-only
-// historical execution APIs such as eth_call, debug_traceTransaction, and other
-// trace-based queries.
-//
-// It does NOT represent live execution state and must never be used for
-// consensus or block production.
-type HistoryEthStorageProxy struct {
+// EthStateVersion represents a specific version of the Ethereum world state at a given block.
+// It is mainly used for historical state queries and transaction execution.
+type EthStateVersion struct {
 	*ethstg.EthWorldState
-	root        ethcommon.Hash
-	blockNumber uint64
-	stgProxy    *StorageProxy
 }
 
-func NewHistoryEthStorageProxy(root ethcommon.Hash, blockNumber uint64, backend *ethstg.EthShardTrieDB) (*HistoryEthStorageProxy, error) {
-	ethWorldState, err := ethstg.LoadEthTrieByRoot(backend.MainTrieDB(), root)
+func NewEthStateVersion(rootHash [32]byte, backend *ethstg.EthShardTrieDB) (*EthStateVersion, error) {
+	ethWorldState, err := ethstg.LoadEthTrieByRoot(backend.MainTrieDB(), rootHash)
 	if err != nil {
 		return nil, err
 	}
 
-	return &HistoryEthStorageProxy{
+	return &EthStateVersion{
 		EthWorldState: ethWorldState,
-		root:          root,
-		blockNumber:   blockNumber,
-		stgProxy:      NewCacheOnlyStoreProxy(), // All the data in the execution cache will be removed after the call.
 	}, nil
 }
 
-// Check if the key exists in the source, which can be a cache or a storage.
-func (this *HistoryEthStorageProxy) IfExists(key string) bool {
-	v, err := this.stgProxy.Retrieve(key, nil)
-	if err == nil {
-		return false
+func (this *EthStateVersion) GetWriters() []crdtcommon.Writer[*statecell.StateCell] {
+	return []crdtcommon.Writer[*statecell.StateCell]{
+		ethstorage.NewEthStorageWriter(this.EthWorldState, -1, (&StorageProxy{}).EthOnly),
 	}
-
-	if v != nil {
-		return true
-	}
-	return this.EthWorldState.IfExists(key)
 }
-
-func (this *HistoryEthStorageProxy) ReadStorage(key string, T any) (any, error) {
-	if v, ok := this.stgProxy.ExecCache().Get(key); ok { // Check the cache first
-		return v, nil
-	}
-	return this.EthWorldState.Retrieve(key, T)
-}
-
-func (this *HistoryEthStorageProxy) Retrieve(key string, v any) (any, error) {
-	return this.ReadStorage(key, v)
-}
-
-func (this *HistoryEthStorageProxy) Preload(data []byte) any {
-	return this.EthWorldState.Preload(data)
-}
-
-func (this *HistoryEthStorageProxy) Close() error { return this.EthWorldState.Close() }

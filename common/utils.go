@@ -21,6 +21,7 @@ import (
 	"errors"
 	"reflect"
 
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	commutative "github.com/arcology-network/common-lib/crdt/commutative"
 	noncommutative "github.com/arcology-network/common-lib/crdt/noncommutative"
 	"github.com/arcology-network/common-lib/crdt/statecell"
@@ -63,14 +64,14 @@ func ParseAddressAndSelector(path string) (evmcommon.Address, [4]byte, error) {
 // CreateDefaultPaths creates default paths for an account in the storage committer.
 func CreateDefaultPaths(tx uint64, acct string, store interface {
 	IfExists(string) bool
-	Write(uint64, string, any, ...any) (int64, error)
+	Write(uint64, string, crdtcommon.CRDT, ...any) (int64, error)
 }) ([]*statecell.StateCell, error) {
 
 	paths, typeids := NewPlatform().GetDefault(acct)
 
 	transitions := []*statecell.StateCell{}
 	for i, path := range paths {
-		var v any
+		var v crdtcommon.CRDT
 		switch typeids[i] {
 		case commutative.PATH: // Path
 			v = commutative.NewPath()

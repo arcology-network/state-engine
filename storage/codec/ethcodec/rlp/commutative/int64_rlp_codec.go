@@ -23,9 +23,9 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-type Int64 struct{ commutative.Int64 }
+type Int64RLP struct{ commutative.Int64 }
 
-func (i *Int64) Encode() ([]byte, error) {
+func (i *Int64RLP) Encode() ([]byte, error) {
 	v := codec.Int64(i.Value().(int64)).Encode()
 	if i.HasLimits() {
 		min, max := i.Limits()
@@ -37,7 +37,7 @@ func (i *Int64) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(v)
 }
 
-func (Int64) Decode(buffer []byte) any {
+func (Int64RLP) Decode(buffer []byte) any {
 	if len(buffer) == 9 {
 		var vBuf []byte
 		if err := rlp.DecodeBytes(buffer, &vBuf); err != nil {

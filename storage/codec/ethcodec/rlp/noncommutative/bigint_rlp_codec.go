@@ -25,13 +25,13 @@ import (
 )
 
 // For RLP encoding/decoding of Bigint type in non-commutative CRDTs only.
-type Bigint struct{ noncommutative.Bigint }
+type BigintRLP struct{ noncommutative.Bigint }
 
-func (this *Bigint) Encode() ([]byte, error) {
+func (this *BigintRLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes((*big.Int)(&this.Bigint))
 }
 
-func (this *Bigint) Decode(buffer []byte) any {
+func (this *BigintRLP) Decode(buffer []byte) any {
 	rlp.DecodeBytes(buffer, (*big.Int)(&this.Bigint))
 	return this
 }

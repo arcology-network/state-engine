@@ -24,11 +24,11 @@ import (
 
 	"github.com/VictoriaMetrics/fastcache"
 	common "github.com/arcology-network/common-lib/common"
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
 	platform "github.com/arcology-network/state-engine/common"
-	statecommon "github.com/arcology-network/state-engine/common"
 	ethrlp "github.com/arcology-network/state-engine/storage/codec/ethcodec/rlp"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
@@ -188,13 +188,14 @@ func (this *EthWorldState) GetAccountProof(addr ethcommon.Address) ([]string, er
 
 // Get the account from the cache first, if not found, get it from the trie.
 func (this *EthWorldState) IfExists(key string) bool {
-	accesses := ethmpt.AccessListCache{}
 	_, acctKey, suffix := platform.ParseAccountAddr(key)
-	if len(suffix) == 0 {
+	if len(acctKey) == 0 {
 		return false
 	}
 
-	if len(acctKey) == 0 {
+	// Should have a suffix like /balance, /nonce, /code, or /storage/ for storage keys.
+	// or a "/" for account itself.
+	if len(suffix) == 0 {
 		return false
 	}
 
@@ -204,43 +205,46 @@ func (this *EthWorldState) IfExists(key string) bool {
 	}
 
 	address := ethcommon.BytesToAddress(acctBytes)
-	if v := this.accountCache[address]; v != nil {
-		return len(key) == statecommon.ETH_ACCOUNT_FULL_LENGTH+1 || v.Has(key) // If the account has the key
+
+	// Check if the account is in the cache
+	if acct := this.accountCache[address]; acct != nil {
+		return acct.Has(key) // If the account has the key
 	}
 
 	// Not in cache, look up in the trie
-	buffer, _ := this.worldStateTrie.ThreadSafeGet([]byte(address[:]), &accesses)
+	buffer, _ := this.worldStateTrie.ThreadSafeGet(crypto.Keccak256(address[:]), &ethmpt.AccessListCache{})
 	if len(buffer) == 0 {
 		return false // Not found
 	}
 
-	if len(suffix) == 0 {
-		return true
-	}
-
+	// Found in the trie.
 	var stateAccount types.StateAccount
 	if err := rlp.DecodeBytes(buffer, &stateAccount); err != nil {
 		return false
 	}
 
-	// address = ethcommon.BytesToAddress([]byte(key))
-	// Load the account but don't keep it in the cache.
-	return NewAccount(address, this.backend, stateAccount).Has(key)
+	acct := NewAccount(address, this.backend, stateAccount)
+	acct.storageTrie, err = LoadTrie(this.backend.mainTrieDB, stateAccount.Root)
+	if err != nil {
+		return false
+	}
+
+	// key can be an account or a storage key under the account.
+	// so we need to make that distinction here. The current code does not do that.
+	// it assume every key is a storage key under the account, not the account itself.
+	return acct.Has(key)
 }
 
 // Get the account from the cache first, if not found, get it from the trie.
 func (this *EthWorldState) GetAccount(address ethcommon.Address, accesses *ethmpt.AccessListCache) (*Account, error) {
-	if len(address) > 0 {
-		if v := this.accountCache[address]; v != nil { // Lookup in the cache first
-			return v, nil
-		}
-		return this.GetAccountFromTrie(address, accesses)
+	if len(address) == 0 {
+		return nil, errors.New("Invalid account: " + address.String())
 	}
-	return nil, errors.New("Invalid account: " + address.String())
-}
 
-// Get the account from the trie
-func (this *EthWorldState) GetAccountFromTrie(address ethcommon.Address, accesses *ethmpt.AccessListCache) (*Account, error) {
+	if v := this.accountCache[address]; v != nil { // Lookup in the cache first
+		return v, nil
+	}
+
 	acctHash := crypto.Keccak256(address.Bytes()) // Hash the key string
 	buffer, err := this.worldStateTrie.Get(acctHash)
 	if len(buffer) == 0 || err != nil {
@@ -248,7 +252,9 @@ func (this *EthWorldState) GetAccountFromTrie(address ethcommon.Address, accesse
 	}
 
 	var acctState types.StateAccount
-	rlp.DecodeBytes(buffer, &acctState)
+	if err := rlp.DecodeBytes(buffer, &acctState); err != nil {
+		return nil, err
+	}
 
 	stgTrie, err := ethmpt.New(ethmpt.TrieID(acctState.Root), this.EthDB()) // Get the storage trie
 	if stgTrie != nil && err == nil {
@@ -267,9 +273,8 @@ func (this *EthWorldState) GetAccountFromTrie(address ethcommon.Address, accesse
 }
 
 // Skip the cache and get from the trie
-func (this *EthWorldState) Retrieve(key string, T any) (any, error) {
-	accesses := ethmpt.AccessListCache{}
-	_, acctKey, _ := platform.ParseAccountAddr(key) // Get the address
+func (this *EthWorldState) Retrieve(path string, T crdtcommon.CRDT) (any, error) {
+	_, acctKey, _ := platform.ParseAccountAddr(path) // Get the address
 	if len(acctKey) == 0 {
 		return nil, errors.New("Invalid account: " + acctKey)
 	}
@@ -281,16 +286,18 @@ func (this *EthWorldState) Retrieve(key string, T any) (any, error) {
 
 	// Get the account the key belongs to.
 	address := ethcommon.BytesToAddress(acctBytes)
-	account, err := this.GetAccount(address, &accesses)
+	account, err := this.GetAccount(address, new(ethmpt.AccessListCache))
 
 	if account != nil {
-		return account.Retrieve(key, T) // Get the storage from the key
+		return account.Retrieve(path, T) // Get the storage from the key
 	}
 	return nil, err
 }
 
 // Get the state from the underlying storage, which is itself.
-func (this *EthWorldState) ReadStorage(key string, T any) (any, error) { return this.Retrieve(key, T) }
+func (this *EthWorldState) ReadBackend(key string, T crdtcommon.CRDT) (any, error) {
+	return this.Retrieve(key, T)
+}
 
 // The WriteWorldTrie writes the updated accounts to the world trie.
 func (this *EthWorldState) WriteWorldTrie(dirtyAccounts []*Account) [32]byte {
@@ -320,7 +327,7 @@ func (this *EthWorldState) LatestWorldTrieRoot() [32]byte {
 }
 
 // ShouldPersistToEth determines whether to persist the current state to Ethereum-compatible storage.
-func (this *EthWorldState) ShouldPersistToEth(blockNum uint64, dirtyAccounts []*Account) {
+func (this *EthWorldState) persistToEthStore(blockNum uint64, dirtyAccounts []*Account) error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
@@ -348,23 +355,26 @@ func (this *EthWorldState) ShouldPersistToEth(blockNum uint64, dirtyAccounts []*
 	slice.ParallelForeach(uniqueDirties, runtime.NumCPU(), func(_ int, dirties *[]*Account) {
 		for _, acct := range *dirties { // There may be multiple updates for the same account.
 			if err := (acct).Commit(blockNum); err != nil {
-				panic(err)
+				this.dbErr = errors.Join(this.dbErr, err)
 			}
 		}
 	})
 
+	// this.backend.Commit(this.worldStateTrie, blockNum)
+
+	// var err error
 	var err error
-	_, this.worldStateTrie, err = this.backend.Commit(this.worldStateTrie, blockNum)
-	// this.worldStateTrie, err = parallelcommitToEthDB(this.worldStateTrie, this.backend.mainTrieDB, blockNum) // Reload the trie for the next block
-	if err != nil {
+	if _, this.worldStateTrie, err = this.backend.Commit(this.worldStateTrie, blockNum); err != nil {
 		this.dbErr = errors.Join(this.dbErr, err)
 	}
+	return this.dbErr
 }
 
-func (this *EthWorldState) BatchRetrieve(keys []string, T []any) []any {
-	values := make([]any, len(keys))
+func (this *EthWorldState) BatchRetrieve(keys []string, T []crdtcommon.CRDT) []crdtcommon.CRDT {
+	values := make([]crdtcommon.CRDT, len(keys))
 	for i := 0; i < len(keys); i++ {
-		values[i], _ = this.Retrieve(keys[i], T[i])
+		v, _ := this.Retrieve(keys[i], T[i])
+		values[i] = v.(crdtcommon.CRDT)
 	}
 	return values
 }
@@ -374,6 +384,7 @@ func (this *EthWorldState) DiskDBs() [16]ethdb.Database {
 }
 
 // Place holders
+func (this *EthWorldState) Backend() *EthShardTrieDB                      { return this.backend }
 func (this *EthWorldState) Root() [32]byte                                { return this.worldStateTrie.Hash() }
 func (this *EthWorldState) Encoder(any) func(string, any) ([]byte, error) { return this.encoder }
 func (this *EthWorldState) Decoder(any) func(string, []byte, any) any     { return this.decoder }
@@ -392,7 +403,7 @@ func (this *EthWorldState) AccountCache() map[ethcommon.Address]*Account { retur
 func (this *EthWorldState) Clear()                                       {}
 func (this *EthWorldState) Close() error                                 { return this.backend.mainTrieDB.Close() }
 
-func (this *EthWorldState) Inject(key string, value any) error { return nil }
+func (this *EthWorldState) Inject(key string, value crdtcommon.CRDT) error { return nil }
 func (this *EthWorldState) GetRootHash(blockNum uint64) [32]byte {
 	this.lock.RLock()
 	defer this.lock.RUnlock()

@@ -24,9 +24,9 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
-type Uint64 struct{ commutative.Uint64 }
+type Uint64RLP struct{ commutative.Uint64 }
 
-func (this *Uint64) Encode() ([]byte, error) {
+func (this *Uint64RLP) Encode() ([]byte, error) {
 	if this.HasLimits() {
 		min, max := this.Limits()
 		v := []*big.Int{new(big.Int).SetUint64(this.Value().(uint64)), new(big.Int).SetUint64(min.(uint64)), new(big.Int).SetUint64(max.(uint64))}
@@ -35,7 +35,7 @@ func (this *Uint64) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(this.Value())
 }
 
-func (*Uint64) Decode(buffer []byte) any {
+func (*Uint64RLP) Decode(buffer []byte) any {
 	this := commutative.NewUnboundedUint64().(*commutative.Uint64)
 
 	arr := make([]*big.Int, 3)

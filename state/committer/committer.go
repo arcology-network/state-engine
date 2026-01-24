@@ -75,7 +75,7 @@ func NewStateCommitter(readonlyStore crdtcommon.ReadOnlyStore, writers []crdtcom
 		return v.IsSync()
 	})
 
-	// Whatever is left is asynchronous writers.
+	// Whatever left are asynchronous writers.
 	committer.asyncWriters = writers
 	return committer
 }
@@ -160,10 +160,12 @@ func (this *StateCommitter) CascadeDelete(txs []uint64) {
 	// })
 }
 
-// Commit commits the transitions in the StateCommitter.
+// DebugPrecommit commits the transitions in the StateCommitter.
 // 1. For the block write cache, it commits the transitions to the cache.
 // 2. For the eth storage, it updates the tries without committing the transitions to the DB
-func (this *StateCommitter) Precommit(txs []uint64) *StateCommitter {
+// The SyncPrecommit and AsyncPrecommit functions should be calle separately in the production environment.
+// This function is ONLY for debugging and tests.
+func (this *StateCommitter) DebugPrecommit(txs []uint64) *StateCommitter {
 	this.Finalize(txs)
 	this.SyncPrecommit()
 	this.AsyncPrecommit()

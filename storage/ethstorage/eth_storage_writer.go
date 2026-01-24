@@ -79,7 +79,7 @@ func (this *EthStorageWriter) Precommit(_ bool) {
 // Signals a block is completed, time to write to the db.
 func (this *EthStorageWriter) Commit(version uint64) {
 	mergedIdxer := new(EthIndexer).Merge(this.buffer[:]) // Merge all the indexers together to commit to the db at once.
-	this.ethStore.ShouldPersistToEth(uint64(mergedIdxer.Version), mergedIdxer.dirtyAccounts)
+	this.ethStore.persistToEthStore(uint64(mergedIdxer.Version), mergedIdxer.dirtyAccounts)
 	this.buffer = this.buffer[:0]
 }
 

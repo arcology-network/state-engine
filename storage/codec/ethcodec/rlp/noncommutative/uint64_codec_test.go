@@ -25,12 +25,12 @@ import (
 
 func TestUint64StorageCodec(t *testing.T) {
 	v := noncommutative.NewUint64(12345)
-	encoded, err := (&Uint64{Uint64: *v}).Encode()
+	encoded, err := (&Uint64RLP{Uint64: *v}).Encode()
 	if err != nil {
 		t.Error("Encoding failed:", err)
 	}
 
-	decoded := new(Uint64).Decode(encoded).(*noncommutative.Uint64)
+	decoded := new(Uint64RLP).Decode(encoded).(*noncommutative.Uint64)
 	if !decoded.Equal(v) {
 		t.Fatal("decode mismatch")
 	}

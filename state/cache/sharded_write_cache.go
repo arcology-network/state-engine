@@ -66,19 +66,19 @@ func (this *ShardedStateCache) NewStateCell(k string) *statecell.StateCell {
 // 	return this.caches[this.hasher(path)%NUM_SHARDS].RetrieveOrCreate(tx, path, T)
 // }
 
-func (this *ShardedStateCache) Read(tx uint64, path string, T any) (interface{}, interface{}, uint64) {
+func (this *ShardedStateCache) Read(tx uint64, path string, T crdtcommon.CRDT) (interface{}, interface{}, uint64) {
 	return this.caches[this.hasher(path)%NUM_SHARDS].Read(tx, path, T)
 }
 
-func (this *ShardedStateCache) Write(tx uint64, path string, value interface{}) (int64, error) {
-	return this.caches[this.hasher(path)%NUM_SHARDS].Write(tx, path, value)
+func (this *ShardedStateCache) Write(tx uint64, path string, v crdtcommon.CRDT) (int64, error) {
+	return this.caches[this.hasher(path)%NUM_SHARDS].Write(tx, path, v)
 }
 
 // func (this *ShardedStateCache) GetIfCached(path string) (interface{}, bool) {
 // 	return this.caches[this.hasher(path)%NUM_SHARDS].GetIfCached(path)
 // }
 
-func (this *ShardedStateCache) Retrieve(path string, T any) (interface{}, error) {
+func (this *ShardedStateCache) Retrieve(path string, T crdtcommon.CRDT) (interface{}, error) {
 	return this.caches[this.hasher(path)%NUM_SHARDS].Retrieve(path, T)
 }
 
