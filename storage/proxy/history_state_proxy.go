@@ -42,6 +42,6 @@ func NewEthStateVersion(rootHash [32]byte, backend *ethstg.EthShardTrieDB) (*Eth
 
 func (this *EthStateVersion) GetWriters() []crdtcommon.Writer[*statecell.StateCell] {
 	return []crdtcommon.Writer[*statecell.StateCell]{
-		ethstorage.NewEthStorageWriter(this.EthWorldState, -1, (&StorageProxy{}).EthOnly),
+		ethstorage.NewEthStorageWriter(this.EthWorldState, -1, (&StorageProxy{}).NonTransientOnly),
 	}
 }
