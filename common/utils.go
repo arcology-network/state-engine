@@ -35,6 +35,13 @@ func NewPathBuilderFromPath(path string) (*PathBuilder, error) {
 	return &PathBuilder{Address: addr, Selector: selector, Platform: ETH_PATH}, err
 }
 
+func ParseAddressSubString(path string) string {
+	if len(path) >= ETH_ACCOUNT_FULL_LENGTH {
+		return path[ETH_ACCOUNT_PREFIX_LENGTH:ETH_ACCOUNT_FULL_LENGTH]
+	}
+	return ""
+}
+
 // Parse the address and selector from the given strings.
 func ParseAddressAndSelector(path string) (evmcommon.Address, [4]byte, error) {
 	acct, selector := "", ""
