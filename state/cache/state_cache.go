@@ -15,13 +15,13 @@
  *   limitations under the License.
  */
 
-// write_cache.go provides the implementation of StateCache, a read-only data readonlyBackend
+// write_cache.go provides the implementation of ExecutionStateCache, a read-only data readonlyBackend
 // designed for caching key-value pairs in the Arcology Network storage committer module.
 // It supports efficient retrieval, insertion, and management of cached data, including
-// wildcard deletions, memory pooling, and integration with a readonlyBackend store. The StateCache
+// wildcard deletions, memory pooling, and integration with a readonlyBackend store. The ExecutionStateCache
 // is optimized for use in concurrent and multi-processor environments.
 //
-// Note: The StateCache itself is read-only; all updates are performed by the committer.
+// Note: The ExecutionStateCache itself is read-only; all updates are performed by the committer.
 //
 
 package cache
@@ -44,14 +44,14 @@ import (
 	statecommon "github.com/arcology-network/state-engine/common"
 )
 
-// StateCache stores the *per-execution* working set of StateCells for a single
+// ExecutionStateCache stores the *per-execution* working set of StateCells for a single
 // transaction or execution context.
 //
 // This layer sits between:
 //   - the global committed storage (readonlyBackend), and
 //   - the per-transaction read/write operations performed during execution.
 //
-// Responsibilities of StateCache:
+// Responsibilities of ExecutionStateCache:
 //   - lazy materialization of StateCells (only create when accessed)
 //   - wildcard/container-based inherited state resolution
 //   - deletion propagation (parent wildcard delete → child logical delete)
@@ -60,12 +60,12 @@ import (
 //
 // IMPORTANT:
 //
-//	StateCache is NOT global state. It is NOT the MPT. It is the *local
+//	ExecutionStateCache is NOT global state. It is NOT the MPT. It is the *local
 //	execution view* used to ensure correctness, determinism, and CRDT/container
 //	semantics. Modifying its logic incorrectly can break replay determinism,
 //	wildcard deletion behavior, lazy materialization rules, and conflict
 //	detection invariants.
-type StateCache struct {
+type ExecutionStateCache struct {
 	// readonlyBackend is the read-only storage interface for accessing *committed*
 	// global state (MPT / flattened DB). Reads fall back to readonlyBackend when
 	// a path is not found locally. readonlyBackend must never be mutated here.
@@ -102,7 +102,7 @@ type StateCache struct {
 	//   - deferred deletion behavior for MPT/flattened storage commit.
 	pendingWildcardDeletes []*associative.Pair[uint64, string] // Paths delete by wildcard
 
-	// platform identifies the execution platform (e.g. ETH_PATH). StateCache
+	// platform identifies the execution platform (e.g. ETH_PATH). ExecutionStateCache
 	// may apply platform-specific rules for storage layout, path normalization,
 	// or encoding behavior.
 	platform statecommon.Platform
@@ -121,12 +121,12 @@ type StateCache struct {
 	id uint64
 }
 
-// StateCache holds the per-execution working set of StateCells.
+// ExecutionStateCache holds the per-execution working set of StateCells.
 // This is the local view of state used during transaction execution.
 // It supports lazy materialization, wildcard delete inheritance,
 // and correct conflict detection.
-func NewStateCache(readonlyBackend crdtcommon.ReadOnlyStore, perPage int, numPages int, args ...any) *StateCache {
-	return &StateCache{
+func NewExecutionStateCache(readonlyBackend crdtcommon.ReadOnlyStore, perPage int, numPages int, args ...any) *ExecutionStateCache {
+	return &ExecutionStateCache{
 		id:                     0,
 		stateVersion:           statecommon.LATEST_STATE_VERSION, // Default to the latest state version
 		readonlyBackend:        readonlyBackend,
@@ -139,26 +139,30 @@ func NewStateCache(readonlyBackend crdtcommon.ReadOnlyStore, perPage int, numPag
 	}
 }
 
-func (this *StateCache) SetReadOnlyBackend(backend crdtcommon.ReadOnlyStore) *StateCache {
+func (this *ExecutionStateCache) SetReadOnlyBackend(backend crdtcommon.ReadOnlyStore) *ExecutionStateCache {
 	this.readonlyBackend = backend
 	return this
 }
 
-func (this *StateCache) GetID() uint64   { return this.id }
-func (this *StateCache) SetID(id uint64) { this.id = id }
+func (this *ExecutionStateCache) GetID() uint64   { return this.id }
+func (this *ExecutionStateCache) SetID(id uint64) { this.id = id }
 
-func (this *StateCache) GetVersion() uint64        { return this.stateVersion }
-func (this *StateCache) SetVersion(version uint64) { this.stateVersion = version }
+func (this *ExecutionStateCache) GetVersion() uint64        { return this.stateVersion }
+func (this *ExecutionStateCache) SetVersion(version uint64) { this.stateVersion = version }
 
-func (this *StateCache) addToLocalCache(v *statecell.StateCell)  { this.localCells[*v.GetPath()] = v }
-func (this *StateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore { return this.readonlyBackend }
-func (this *StateCache) Cache() *map[string]*statecell.StateCell { return &this.localCells }
-func (this *StateCache) Preload([]byte) any {
+func (this *ExecutionStateCache) addToLocalCache(v *statecell.StateCell) {
+	this.localCells[*v.GetPath()] = v
+}
+func (this *ExecutionStateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore {
+	return this.readonlyBackend
+}
+func (this *ExecutionStateCache) Cache() *map[string]*statecell.StateCell { return &this.localCells }
+func (this *ExecutionStateCache) Preload([]byte) any {
 	panic("Not implemented yet")
 } // Preload from the underlying storage
 
 // Placeholder
-func (this *StateCache) NewStateCell() *statecell.StateCell { return this.pool.New() }
+func (this *ExecutionStateCache) NewStateCell() *statecell.StateCell { return this.pool.New() }
 
 // Check if the current entry is in its parents' records. This is used when
 // the entry is deleted through a wildcard deletion, in this case, if the
@@ -175,7 +179,7 @@ func (this *StateCache) NewStateCell() *statecell.StateCell { return this.pool.N
 // still find them and their immediate parent path also exists, although their grandparent path
 // are gone. Unless we recursively check the parent paths, we can't tell if they are truly gone.
 // This requires a lot of queries and decoding.
-func (this *StateCache) ExistsInParent(tx uint64, path string, do func(*statecell.StateCell)) bool {
+func (this *ExecutionStateCache) ExistsInParent(tx uint64, path string, do func(*statecell.StateCell)) bool {
 	// No metadata for immediate children of system paths.
 	if this.platform.IsImmediateChildOfSysPath(path) {
 		return true
@@ -193,7 +197,7 @@ func (this *StateCache) ExistsInParent(tx uint64, path string, do func(*statecel
 
 // Get the raw value directly, put it in an empty cell without recording
 // the access. `Won't` update the localCells.
-func (this *StateCache) LookupForRead(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
+func (this *ExecutionStateCache) LookupForRead(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
 	// If the path doesn't exist in the parent snapshot at all (no committed
 	// value, no wildcard/container inheritance), just return an empty,
 	// non-cached cell.
@@ -216,7 +220,7 @@ func (this *StateCache) LookupForRead(tx uint64, path string, T crdtcommon.CRDT,
 //
 // It may insert a new StateCell into localCells when a wildcard/container
 // delete implies a *logical* deleted state for this path.
-func (this *StateCache) LookupOrMaterialize(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell), cached bool) (any, *statecell.StateCell, bool) {
+func (this *ExecutionStateCache) LookupOrMaterialize(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell), cached bool) (any, *statecell.StateCell, bool) {
 	// if tx == 0 {
 	// 	fmt.Println("Tx:", tx, "Path:", path)
 	// }
@@ -263,7 +267,7 @@ func (this *StateCache) LookupOrMaterialize(tx uint64, path string, T crdtcommon
 }
 
 // Write applies newVal to path, tracks size delta, and invokes optional callback.
-func (this *StateCache) Write(tx uint64, path string, newVal crdtcommon.CRDT, args ...any) (int64, error) {
+func (this *ExecutionStateCache) Write(tx uint64, path string, newVal crdtcommon.CRDT, args ...any) (int64, error) {
 	if newVal != nil && newVal.TypeID() == uint8(reflect.Invalid) { // Neither a valid replacement nor a delete operation.
 		return 0, errors.New("Error: Unknown data type !")
 	}
@@ -281,7 +285,7 @@ func (this *StateCache) Write(tx uint64, path string, newVal crdtcommon.CRDT, ar
 // system operations.
 //
 // Use it with SPECIAL care!!!
-func (this *StateCache) Inject(tx uint64, path string, v crdtcommon.CRDT) (*statecell.StateCell, error) {
+func (this *ExecutionStateCache) Inject(tx uint64, path string, v crdtcommon.CRDT) (*statecell.StateCell, error) {
 	_, cell, inCache := this.LookupOrMaterialize(tx, path, v, this.addToLocalCache, true) // Get a cell wrapper
 	err := cell.Set(tx, path, v, inCache, this)                                           // set the new value
 	return cell, err
@@ -290,7 +294,7 @@ func (this *StateCache) Inject(tx uint64, path string, v crdtcommon.CRDT) (*stat
 // write stores a value in the state cache at the specified path, creating or materializing the associated state cell,
 // ensuring parent metadata is updated when necessary, and propagating transient status from the parent path; it fails if
 // the parent path is missing and the transaction is not SYSTEM.
-func (this *StateCache) write(tx uint64, path string, value crdtcommon.CRDT) (*statecell.StateCell, error) {
+func (this *ExecutionStateCache) write(tx uint64, path string, value crdtcommon.CRDT) (*statecell.StateCell, error) {
 	parentPath, _ := statecommon.GetParentPath(path)
 	cell := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default cell wrapper
 	if this.IfExists(parentPath) || tx == statecommon.SYSTEM {    // The parent path exists or to inject the path directly
@@ -328,7 +332,7 @@ func (this *StateCache) write(tx uint64, path string, value crdtcommon.CRDT) (*s
 
 // Get the raw value directly WITHOUT tracking the accessing record.
 // Users need to count access themselves.
-func (this *StateCache) Retrieve(path string, T crdtcommon.CRDT) (any, error) {
+func (this *ExecutionStateCache) Retrieve(path string, T crdtcommon.CRDT) (any, error) {
 	typedv, _, _ := this.LookupForRead(statecommon.SYSTEM, path, T, nil)
 	if typedv == nil || typedv.(crdtcommon.CRDT).IsDeltaApplied() {
 		return typedv, nil
@@ -352,23 +356,23 @@ func (this *StateCache) Retrieve(path string, T crdtcommon.CRDT) (any, error) {
 
 // The load the data from the readonlyBackend. Since the state is already isCommitted, it is read-only.
 // No need to add it to the localCells or keep track of the access.
-func (this *StateCache) LoadFromCommitted(tx uint64, path string, T crdtcommon.CRDT) *statecell.StateCell {
+func (this *ExecutionStateCache) LoadFromCommitted(tx uint64, path string, T crdtcommon.CRDT) *statecell.StateCell {
 	var typedv any
 	if readonlyBackend := this.ReadOnlyStore(); readonlyBackend != nil {
-		typedv, _ = readonlyBackend.Retrieve(path, T) // The readonlyBackend could also be another instance of StateCache.
+		typedv, _ = readonlyBackend.Retrieve(path, T) // The readonlyBackend could also be another instance of ExecutionStateCache.
 	}
 	return this.NewStateCell().Init(tx, path, 0, 0, 0, typedv, typedv != nil)
 }
 
 // This function specifically retrieves the value from the readonlyBackend without any tracking.
-func (this *StateCache) ReadBackend(key string, T crdtcommon.CRDT) (any, error) {
+func (this *ExecutionStateCache) ReadBackend(key string, T crdtcommon.CRDT) (any, error) {
 	if this.readonlyBackend != nil {
 		return this.readonlyBackend.ReadBackend(key, T)
 	}
 	return nil, errors.New("Error: The readonlyBackend is nil")
 }
 
-func (this *StateCache) Read(tx uint64, path string, T crdtcommon.CRDT) (any, any, uint64) {
+func (this *ExecutionStateCache) Read(tx uint64, path string, T crdtcommon.CRDT) (any, any, uint64) {
 	_, stcell, _ := this.LookupForRead(tx, path, T, this.addToLocalCache) // Get the cell wrapper
 
 	// need to check if it is in the memory. If so gas price should be 3 instead.
@@ -380,8 +384,8 @@ func (this *StateCache) Read(tx uint64, path string, T crdtcommon.CRDT) (any, an
 }
 
 // DiffSize returns the memory size delta between the current cell value and newVal.
-// This is used for tracking memory usage changes in the StateCache and calculating fees.
-func (this *StateCache) DiffSize(tx uint64, path string, newVal crdtcommon.CRDT) int64 {
+// This is used for tracking memory usage changes in the ExecutionStateCache and calculating fees.
+func (this *ExecutionStateCache) DiffSize(tx uint64, path string, newVal crdtcommon.CRDT) int64 {
 	oldSize := int64(0)
 	if oldVal, _, _ := this.LookupForRead(tx, path, newVal, nil); oldVal != nil {
 		oldSize += int64(oldVal.(crdtcommon.CRDT).MemSize())
@@ -396,14 +400,14 @@ func (this *StateCache) DiffSize(tx uint64, path string, newVal crdtcommon.CRDT)
 }
 
 // Get the raw value directly, skip the access counting at the cell level
-func (this *StateCache) GetIfCached(path string) (any, bool) {
+func (this *ExecutionStateCache) GetIfCached(path string) (any, bool) {
 	cell, ok := this.localCells[path]
 	return cell, ok
 }
 
 // Check if the path exists in the writecache or the readonlyBackend.
 // No access count is recorded. Only for internal use. Not exposed to the public API.
-func (this *StateCache) IfExists(path string) bool {
+func (this *ExecutionStateCache) IfExists(path string) bool {
 	// Any path shorter than the ETH_ACCOUNT_PREFIX is a system path.
 	if statecommon.ETH_ACCOUNT_PREFIX_LENGTH >= len(path) {
 		return true
@@ -423,7 +427,7 @@ func (this *StateCache) IfExists(path string) bool {
 
 // The function is used to add the transitions to the writecache. It assumes that the transition's
 // parent path has been added to the writecache already. Otherwise, it won't succeed.
-func (this *StateCache) set(v *statecell.StateCell) *StateCache {
+func (this *ExecutionStateCache) set(v *statecell.StateCell) *ExecutionStateCache {
 	if v == nil {
 		return this
 	}
@@ -438,7 +442,7 @@ func (this *StateCache) set(v *statecell.StateCell) *StateCache {
 
 // The function is used to add the transitions to the writecache, which usually comes from
 // the child writecaches. It usually happens with the sub processeses are completed.
-func (this *StateCache) Insert(transitions []*statecell.StateCell) *StateCache {
+func (this *ExecutionStateCache) Insert(transitions []*statecell.StateCell) *ExecutionStateCache {
 	if len(transitions) == 0 {
 		return this
 	}
@@ -470,13 +474,13 @@ func (this *StateCache) Insert(transitions []*statecell.StateCell) *StateCache {
 }
 
 // Reset the writecache to the initial state for the next round of processing.
-func (this *StateCache) Clear() *StateCache {
+func (this *ExecutionStateCache) Clear() *ExecutionStateCache {
 	this.pool.Reset()
 	clear(this.localCells)
 	return this
 }
 
-func (this *StateCache) Equal(other *StateCache) bool {
+func (this *ExecutionStateCache) Equal(other *ExecutionStateCache) bool {
 	thisBuffer := mapi.Values(this.localCells)
 	sort.SliceStable(thisBuffer, func(i, j int) bool {
 		return *thisBuffer[i].GetPath() < *thisBuffer[j].GetPath()
@@ -492,7 +496,7 @@ func (this *StateCache) Equal(other *StateCache) bool {
 }
 
 // Export the content of the writecache to two arrays of cells.
-func (this *StateCache) Export(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) []*statecell.StateCell {
+func (this *ExecutionStateCache) Export(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) []*statecell.StateCell {
 	buffer := mapi.Values(this.localCells)
 	for _, proc := range preprocs {
 		buffer = common.IfThenDo1st(proc != nil, func() []*statecell.StateCell {
@@ -509,14 +513,14 @@ func (this *StateCache) Export(preprocs ...func([]*statecell.StateCell) []*state
 }
 
 // For the testing purpose, export the content of the writecache to two arrays of cells and filter.
-func (this *StateCache) ExportAll(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) ([]*statecell.StateCell, []*statecell.StateCell) {
+func (this *ExecutionStateCache) ExportAll(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) ([]*statecell.StateCell, []*statecell.StateCell) {
 	all := this.Export()
 	accesses := statecell.StateCells(slice.Clone(all)).To(statecell.InterThreadAccess{})
 	transitions := statecell.StateCells(slice.Clone(all)).To(statecell.InterThreadTransition{})
 	return accesses, transitions
 }
 
-func (this *StateCache) KVs() ([]string, []crdtcommon.CRDT) {
+func (this *ExecutionStateCache) KVs() ([]string, []crdtcommon.CRDT) {
 	transitions := statecell.StateCells(slice.Clone(this.Export(statecell.Sorter))).To(statecell.InterThreadTransition{})
 
 	values := make([]crdtcommon.CRDT, len(transitions))
@@ -529,7 +533,7 @@ func (this *StateCache) KVs() ([]string, []crdtcommon.CRDT) {
 
 // This function is used to write the cache to the data source directly to bypass all the intermediate steps,
 // including the conflict detection.
-func (this *StateCache) Print() {
+func (this *ExecutionStateCache) Print() {
 	values := mapi.Values(this.localCells)
 	sort.SliceStable(values, func(i, j int) bool {
 		return *values[i].GetPath() < *values[j].GetPath()
@@ -542,7 +546,7 @@ func (this *StateCache) Print() {
 }
 
 // Calculate the checksum of the writecache for integrity check.
-func (this *StateCache) Checksum() [32]byte {
+func (this *ExecutionStateCache) Checksum() [32]byte {
 	values := mapi.Values(this.localCells)
 	sort.SliceStable(values, func(i, j int) bool {
 		return *values[i].GetPath() < *values[j].GetPath()
@@ -552,7 +556,7 @@ func (this *StateCache) Checksum() [32]byte {
 
 // Read the value from the readonlyBackend. This function is used for
 // GetCommittedState() in Eth interface for gas refund related code.
-func (this *StateCache) ReadCommitted(tx uint64, key string, T crdtcommon.CRDT) (any, uint64) {
+func (this *ExecutionStateCache) ReadCommitted(tx uint64, key string, T crdtcommon.CRDT) (any, uint64) {
 	// Just to leave a record for conflict detection. This is different from the original Ethereum implementation.
 	// In Ethereum, there is no such concept as the multiprocessor，so the isCommitted state can only come from the
 	// previous block or the transactions before the current one. But in the multiprocessor, the isCommitted state

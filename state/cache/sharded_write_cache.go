@@ -15,7 +15,7 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// StateCache is a read-only data store used for caching.
+// ExecutionStateCache is a read-only data store used for caching.
 
 package cache
 
@@ -31,12 +31,12 @@ const (
 	NUM_SHARDS = 32
 )
 
-// ShardedStateCache is a lockless data strucuture that wraps multiple StateCache instances together, each of
+// ShardedStateCache is a lockless data strucuture that wraps multiple ExecutionStateCache instances together, each of
 // which is responsible for a subset of the data. It can be updated in parallel when a transaction generation
 // is completed. But it isn't thread-safe.
 type ShardedStateCache struct {
 	backend crdtcommon.ReadOnlyStore
-	caches  [NUM_SHARDS]*StateCache
+	caches  [NUM_SHARDS]*ExecutionStateCache
 	hasher  func(string) uint64
 	queue   chan *[]*statecell.StateCell
 }
@@ -48,14 +48,14 @@ func NewShardedStateCache(backend crdtcommon.ReadOnlyStore, perPage int, numPage
 	}
 
 	for i := 0; i < len(writeCache.caches); i++ {
-		writeCache.caches[i] = NewStateCache(backend, perPage, numPages, args...)
+		writeCache.caches[i] = NewExecutionStateCache(backend, perPage, numPages, args...)
 	}
 	writeCache.queue = make(chan *[]*statecell.StateCell, 64)
 	return writeCache
 }
 
 func (this *ShardedStateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore { return this.backend }
-func (this *ShardedStateCache) Cache() [NUM_SHARDS]*StateCache          { return this.caches }
+func (this *ShardedStateCache) Cache() [NUM_SHARDS]*ExecutionStateCache          { return this.caches }
 
 func (this *ShardedStateCache) NewStateCell(k string) *statecell.StateCell {
 	return this.caches[this.hasher(k)].NewStateCell()
@@ -95,7 +95,7 @@ func (this *ShardedStateCache) Import(transitions []*statecell.StateCell) *Shard
 	})
 
 	// Insert each transition into the appropriate cache
-	slice.ParallelForeach(this.caches[:], runtime.NumCPU(), func(num int, shard **StateCache) {
+	slice.ParallelForeach(this.caches[:], runtime.NumCPU(), func(num int, shard **ExecutionStateCache) {
 		for i := 0; i < len(transitions); i++ {
 			if shards[i] == uint64(num) {
 				this.caches[num].set(transitions[i])
@@ -109,7 +109,7 @@ func (this *ShardedStateCache) Import(transitions []*statecell.StateCell) *Shard
 // func (this *ShardedStateCache) Precommit([]uint32) [32]byte { return [32]byte{} }
 
 func (this *ShardedStateCache) Reset() *ShardedStateCache {
-	slice.ParallelForeach(this.caches[:], runtime.NumCPU(), func(i int, wcache **StateCache) {
+	slice.ParallelForeach(this.caches[:], runtime.NumCPU(), func(i int, wcache **ExecutionStateCache) {
 		(*wcache).Clear()
 	})
 	return this

@@ -34,7 +34,7 @@ import (
 func CreateAccountInStore(accts ...[20]byte) (*stateengine.StateStore, error) {
 	sstore := stateengine.NewStateStore(proxy.NewMemDBStoreProxy())
 
-	writeCache := sstore.StateCache
+	writeCache := sstore.ExecutionStateCache
 
 	for _, sender := range accts {
 		if _, err := statecommon.CreateDefaultPaths(1, hexutil.Encode(sender[:]), writeCache); err != nil { // NewAccount account structure {
@@ -57,7 +57,7 @@ func CreateAccountInStore(accts ...[20]byte) (*stateengine.StateStore, error) {
 
 // InjectTransitions creates accounts in the state store by injecting state transitions.
 func InjectTransitions(sstore *stateengine.StateStore, keys []string, vals []crdtcommon.CRDT) error {
-	writeCache := sstore.StateCache
+	writeCache := sstore.ExecutionStateCache
 	var aggregatedErr error
 	for i := range keys {
 		_, err := writeCache.Inject(statecommon.SYSTEM, keys[i], vals[i])

@@ -25,14 +25,14 @@ import (
 	committer "github.com/arcology-network/state-engine/state/committer"
 
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
-	cache "github.com/arcology-network/state-engine/state/cache"
+	statecache "github.com/arcology-network/state-engine/state/cache"
 	proxy "github.com/arcology-network/state-engine/storage/proxy"
 	"github.com/cespare/xxhash/v2"
 )
 
 // Buffer is simpliest  of indexers. It does not index anything, just stores the transitions.
 type StateStore struct {
-	*cache.StateCache // execution cache, cleared at the end of each block.
+	*statecache.ExecutionStateCache // execution cache, cleared at the end of each block.
 	*committer.StateCommitter
 	backend proxy.ReadWriteStore
 }
@@ -41,7 +41,7 @@ type StateStore struct {
 func NewStateStore(backend proxy.ReadWriteStore) *StateStore {
 	store := &StateStore{
 		backend: backend,
-		StateCache: cache.NewStateCache(
+		ExecutionStateCache: statecache.NewExecutionStateCache(
 			backend,
 			16,
 			1,
@@ -50,7 +50,7 @@ func NewStateStore(backend proxy.ReadWriteStore) *StateStore {
 			},
 		),
 	}
-	store.StateCommitter = committer.NewStateCommitter(store.StateCache, store.GetWriters())
+	store.StateCommitter = committer.NewStateCommitter(store.ExecutionStateCache, store.GetWriters())
 
 	// Commit initial transitions to the store if any.
 	initTrans := []*statecell.StateCell{
@@ -68,16 +68,21 @@ func NewStateStore(backend proxy.ReadWriteStore) *StateStore {
 	return store
 }
 
-func (this *StateStore) Backend() proxy.ReadWriteStore        { return this.backend }
-func (this *StateStore) Cache() *cache.StateCache            { return this.StateCache }
-func (this *StateStore) Import(trans []*statecell.StateCell) { this.StateCommitter.Import(trans) }
+func (this *StateStore) Backend() proxy.ReadWriteStore          { return this.backend }
+func (this *StateStore) Cache() *statecache.ExecutionStateCache { return this.ExecutionStateCache }
+func (this *StateStore) Import(trans []*statecell.StateCell)    { this.StateCommitter.Import(trans) }
 func (this *StateStore) Preload(key []byte) any {
 	return this.backend.Preload(key)
 }
-func (this *StateStore) Clear() { this.StateCache.Clear() }
+func (this *StateStore) Clear() { this.ExecutionStateCache.Clear() }
 
 func (this *StateStore) GetWriters() []crdtcommon.Writer[*statecell.StateCell] {
-	return append([]crdtcommon.Writer[*statecell.StateCell]{
-		cache.NewExecutionCacheWriter(this.StateCache, -1)},
-		this.backend.GetWriters()...)
+	selfWriter := []crdtcommon.Writer[*statecell.StateCell]{
+		statecache.NewExecutionCacheWriter(this.ExecutionStateCache, -1)}
+
+	if this.backend == nil {
+		return selfWriter
+	}
+
+	return append(selfWriter, this.backend.GetWriters()...)
 }

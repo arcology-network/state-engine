@@ -26,7 +26,7 @@ import (
 
 // PreloadMatched preloads the paths that match the wildcard delete path that are about to be deleted by the
 // the current write operation.
-func (this *StateCache) ResolveWildcardDeletion(path string, T crdtcommon.CRDT) (bool, *statecell.StateCell) {
+func (this *ExecutionStateCache) ResolveWildcardDeletion(path string, T crdtcommon.CRDT) (bool, *statecell.StateCell) {
 	// Delete only for now.
 	for _, wildcardPath := range this.pendingWildcardDeletes {
 		if len(path) < len(wildcardPath.Second) {
@@ -44,7 +44,7 @@ func (this *StateCache) ResolveWildcardDeletion(path string, T crdtcommon.CRDT) 
 }
 
 // WildcardsToUnivalue converts wildcard paths to StateCell for exporting.
-func (this *StateCache) WildcardsToStateCell() []*statecell.StateCell {
+func (this *ExecutionStateCache) WildcardsToStateCell() []*statecell.StateCell {
 	univs := make([]*statecell.StateCell, 0)
 	for _, wildcardPath := range this.pendingWildcardDeletes {
 		newV := statecell.NewStateCell(wildcardPath.First, wildcardPath.Second+"*", 0, 1, 0, nil, nil)
