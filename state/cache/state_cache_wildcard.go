@@ -48,7 +48,7 @@ func (this *ExecutionStateCache) WildcardsToStateCell() []*statecell.StateCell {
 	univs := make([]*statecell.StateCell, 0)
 	for _, wildcardPath := range this.pendingWildcardDeletes {
 		newV := statecell.NewStateCell(wildcardPath.First, wildcardPath.Second+"*", 0, 1, 0, nil, nil)
-		newV.SetPreexist(true) // Mark as pre-existing, so it pass through the filter.
+		newV.DebugSetPreexist(true) // Mark as pre-existing, so it pass through the filter.
 		univs = append(univs, newV)
 	}
 	return univs
