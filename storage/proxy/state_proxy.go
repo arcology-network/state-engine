@@ -24,6 +24,7 @@ import (
 	"github.com/arcology-network/common-lib/crdt/commutative"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	ccbadger "github.com/arcology-network/common-lib/storage/badger"
+	cachedkvstore "github.com/arcology-network/common-lib/storage/cachedkvstore"
 	"github.com/arcology-network/common-lib/storage/memdb"
 	statecommon "github.com/arcology-network/state-engine/common"
 	"github.com/arcology-network/state-engine/storage/ethstorage"
@@ -47,7 +48,7 @@ import (
 
 type StorageProxy struct {
 	platform    *statecommon.Platform
-	execCache   *livecache.LiveCache // An object cache for the backend storage, only updated once at the end of the block.
+	execCache   *cachedkvstore.CachedKVStore[string, crdtcommon.CRDT] // An object cache for the backend storage, only updated once at the end of the block.
 	execBackend *livebackend.LiveStorage
 	ethStorage  *ethstg.EthWorldState
 }
@@ -94,11 +95,13 @@ func NewLevelDBStoreProxy(ethDBPath, execDBPath string, cacheCap uint64, cacheCo
 	return proxy
 }
 
-func (this *StorageProxy) EnableCache()    { this.execCache.Enable() }
-func (this *StorageProxy) DisableCache()   { this.execCache.Disable() }
+func (this *StorageProxy) EnableCache()    {}
+func (this *StorageProxy) DisableCache()   {}
 func (this *StorageProxy) ClearExecCache() { this.execCache.Clear() }
 
-func (this *StorageProxy) ExecCache() *livecache.LiveCache     { return this.execCache }
+func (this *StorageProxy) ExecCache() *cachedkvstore.CachedKVStore[string, crdtcommon.CRDT] {
+	return this.execCache
+}
 func (this *StorageProxy) ExecStore() *livebackend.LiveStorage { return this.execBackend } // Arcology storage
 func (this *StorageProxy) EthStore() *ethstg.EthWorldState     { return this.ethStorage }  // Eth storage
 
@@ -108,8 +111,8 @@ func (this *StorageProxy) ReadBackend(key string, v crdtcommon.CRDT) (any, error
 }
 
 func (this *StorageProxy) Retrieve(key string, v crdtcommon.CRDT) (any, error) {
-	if val, ok := this.execCache.Get(key); ok { // Check the cache first
-		return val, nil
+	if entry, ok := this.execCache.Get(key); ok { // Check the cache first
+		return entry.Value, nil
 	}
 	return this.execBackend.Retrieve(key, v)
 }

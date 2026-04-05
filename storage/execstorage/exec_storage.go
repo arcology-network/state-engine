@@ -20,13 +20,11 @@ package execstorage
 import (
 	"math"
 
-	livebackend "github.com/arcology-network/state-engine/storage/execstorage/livebackend"
-	livecache "github.com/arcology-network/state-engine/storage/execstorage/livecache"
-
 	ccbadger "github.com/arcology-network/common-lib/storage/badger"
 	"github.com/arcology-network/common-lib/storage/memdb"
-
 	arcocodec "github.com/arcology-network/state-engine/storage/codec/arcocodec"
+	livebackend "github.com/arcology-network/state-engine/storage/execstorage/livebackend"
+	livecache "github.com/arcology-network/state-engine/storage/execstorage/livecache"
 )
 
 // ExecStorage is the execution-time storage view used by the VM.
@@ -67,14 +65,8 @@ func NewMemDBExecStorage(cacheSize uint64) *ExecStorage {
 	return proxy
 }
 
-func (this *ExecStorage) EnableCache() *ExecStorage {
-	this.cache.Enable()
-	return this
-}
+func (this *ExecStorage) EnableCache() *ExecStorage { return this }
 
-func (this *ExecStorage) DisableCache() *ExecStorage {
-	this.cache.Disable()
-	return this
-}
+func (this *ExecStorage) DisableCache() *ExecStorage { return this }
 
 func (this *ExecStorage) ClearExecCache() { this.cache.Clear() }

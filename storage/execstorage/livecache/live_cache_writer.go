@@ -17,19 +17,21 @@
 
 package livecache
 
-import statecell "github.com/arcology-network/common-lib/crdt/statecell"
-
-// LiveCacheWriter writes to the LiveCache.
+import (
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
+	cachedkvstore "github.com/arcology-network/common-lib/storage/cachedkvstore"
+)
 
 type LiveCacheWriter struct {
 	*LiveCacheIndexer
-	liveCache *LiveCache
+	liveCache *cachedkvstore.CachedKVStore[string, crdtcommon.CRDT]
 	buffer    []*LiveCacheIndexer             // For multiple generations. Each geneartion has its own indexer.
 	version   int64                           // The version of the indexer, used for debugging and tracking.
 	filter    func(*statecell.StateCell) bool // Filter function to select transitions to be indexed
 }
 
-func NewLiveCacheWriter(cache *LiveCache, version int64, filter func(*statecell.StateCell) bool) *LiveCacheWriter {
+func NewLiveCacheWriter(cache *cachedkvstore.CachedKVStore[string, crdtcommon.CRDT], version int64, filter func(*statecell.StateCell) bool) *LiveCacheWriter {
 	return &LiveCacheWriter{
 		LiveCacheIndexer: NewLiveCacheIndexer(cache, version, filter),
 		liveCache:        cache,
@@ -41,19 +43,12 @@ func NewLiveCacheWriter(cache *LiveCache, version int64, filter func(*statecell.
 
 // Import the transitions into the indexer
 func (this *LiveCacheWriter) Import(transitions []*statecell.StateCell) {
-	if !this.liveCache.Status() {
-		return // Cache is disabled, do nothing.
-	}
 	this.LiveCacheIndexer.Import(transitions)
 }
 
 // Send the data to the downstream processor, this is called for each generation.
 // If there are multiple generations, this can be called multiple times before isSync==true
 func (this *LiveCacheWriter) Precommit(isSync bool) {
-	if !this.liveCache.Status() {
-		return // Cache is disabled, do nothing.
-	}
-
 	if isSync {
 		this.LiveCacheIndexer.Reset() // In the sync phase, clear the buffer.
 	} else {
@@ -69,13 +64,9 @@ func (this *LiveCacheWriter) Reset() {
 
 // Triggered by the block commit.
 func (this *LiveCacheWriter) Commit(block uint64) {
-	if !this.liveCache.Status() {
-		return // Cache is disabled, do nothing.
-	}
-
 	merged := new(LiveCacheIndexer).Merge(this.buffer) // Merge indexers
-	this.liveCache.Commit(merged.buffer, block)        // commit univalues directly
-	this.buffer = make([]*LiveCacheIndexer, 0)         // Reset the indexer buffer
+	this.liveCache.CommitStateCells(merged.buffer, block)
+	this.buffer = make([]*LiveCacheIndexer, 0) // Reset the indexer buffer
 }
 
 func (this *LiveCacheWriter) IsSync() bool { return true }

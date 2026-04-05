@@ -22,6 +22,7 @@ import (
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/slice"
+	cachedkvstore "github.com/arcology-network/common-lib/storage/cachedkvstore"
 )
 
 // LiveCacheIndexer is simpliest  of indexers. It does not index anything, just stores the transitions.
@@ -34,7 +35,8 @@ type LiveCacheIndexer struct {
 	filter       func(*statecell.StateCell) bool
 }
 
-func NewLiveCacheIndexer(store *LiveCache, Version int64, filter func(*statecell.StateCell) bool) *LiveCacheIndexer {
+func NewLiveCacheIndexer(store *cachedkvstore.CachedKVStore[string, crdtcommon.CRDT], Version int64, filter func(*statecell.StateCell) bool) *LiveCacheIndexer {
+	_ = store
 	return &LiveCacheIndexer{
 		Version:      Version,
 		importBuffer: []*statecell.StateCell{},
