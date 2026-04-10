@@ -65,7 +65,25 @@ func (this *LiveCacheWriter) Reset() {
 // Triggered by the block commit.
 func (this *LiveCacheWriter) Commit(block uint64) {
 	merged := new(LiveCacheIndexer).Merge(this.buffer) // Merge indexers
-	this.liveCache.CommitStateCells(merged.buffer, block)
+	this.liveCache.UpdateVersion(block)
+
+	keys := make([]string, len(merged.buffer))
+	entries := make([]*cachedkvstore.Entry[crdtcommon.CRDT], len(merged.buffer))
+	for i, cell := range merged.buffer {
+		keys[i] = *cell.GetPath()
+
+		v := cell.Value()
+		if v == nil {
+			continue
+		}
+		entries[i] = &cachedkvstore.Entry[crdtcommon.CRDT]{Value: v.(crdtcommon.CRDT)}
+		entries[i].SetLoaded(block)
+	}
+
+	this.liveCache.SetBatch(keys, entries)
+	this.liveCache.UpdateVersion(block)
+	this.liveCache.Evict()
+
 	this.buffer = make([]*LiveCacheIndexer, 0) // Reset the indexer buffer
 }
 
