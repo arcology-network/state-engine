@@ -1,5 +1,3 @@
-package ethrlp
-
 /*
  *   Copyright (c) 2025 Arcology Network
 
@@ -16,6 +14,8 @@ package ethrlp
  *   You should have received a copy of the GNU General Public License
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+
+package ethrlp
 
 import (
 

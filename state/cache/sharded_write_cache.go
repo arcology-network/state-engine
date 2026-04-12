@@ -55,16 +55,11 @@ func NewShardedStateCache(backend crdtcommon.ReadOnlyStore, perPage int, numPage
 }
 
 func (this *ShardedStateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore { return this.backend }
-func (this *ShardedStateCache) Cache() [NUM_SHARDS]*ExecutionStateCache          { return this.caches }
+func (this *ShardedStateCache) Cache() [NUM_SHARDS]*ExecutionStateCache { return this.caches }
 
 func (this *ShardedStateCache) NewStateCell(k string) *statecell.StateCell {
 	return this.caches[this.hasher(k)].NewStateCell()
 }
-
-// ONLY THE TX WRITECACHE HAS THE NEED TO SUPPORT GET OR NOW
-// func (this *ShardedStateCache) RetrieveOrCreate(tx uint64, path string, T any) (*statecell.StateCell, bool) {
-// 	return this.caches[this.hasher(path)%NUM_SHARDS].RetrieveOrCreate(tx, path, T)
-// }
 
 func (this *ShardedStateCache) Read(tx uint64, path string, T crdtcommon.CRDT) (interface{}, interface{}, uint64) {
 	return this.caches[this.hasher(path)%NUM_SHARDS].Read(tx, path, T)

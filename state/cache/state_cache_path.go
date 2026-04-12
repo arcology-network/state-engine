@@ -191,30 +191,6 @@ func (this *ExecutionStateCache) PopBack(tx uint64, path string, T crdtcommon.CR
 	return value, int64(_1stReadSize+_2ndReadSize) + writeDataSize, err
 }
 
-// Remove all the enties in a path, without a single read operation.
-// The length will stay the same, but the container will be empty. This is useful for avoiding meta level
-// conflicts when the container is appended.
-// func (this *ExecutionStateCache) EraseAll(tx uint64, path string, T any) (any, int64, error) {
-// 	if !common.IsPath(path) {
-// 		return nil, int64(stgcommon.MIN_READ_SIZE), errors.New("Error: Not a path!!!")
-// 	}
-// 	writeDataSize, err := this.Write(tx, path+"*", nil) // Remove the path from the cache, so that it will not be read again.
-
-// 	// meta, _, readDataSize := this.Peek(path, T) // read the container meta
-// 	// var accumReadGas uint64
-// 	// var accumWriteDataSize int64
-// 	// for _, subkey := range meta.(*softdeltaset.DeltaSet[string]).Elements() {
-// 	// 	key := path + subkey // Concatenate the path and the subkey
-// 	// 	writeData, err := this.Write(tx, key, nil)
-// 	// 	if err != nil {
-// 	// 		fmt.Printf("----------state-engine/storage/cache/write_cache_reader.go----EraseAll for--key:%v--err:%v \n", key, err)
-// 	// 		// panic(err)
-// 	// 	}
-// 	// 	accumWriteDataSize += writeData
-// 	// }
-// 	return nil, writeDataSize, err
-// }
-
 // Read th Nth element under a path
 // The way to do this is to use the keys in in the path first and then use the index to get the key.
 // Eventually, the key is used to read or write the data. This solution has some issues.
