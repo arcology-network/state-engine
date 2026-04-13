@@ -77,8 +77,8 @@ func (this *ShardedStateCache) Retrieve(path string, T crdtcommon.CRDT) (interfa
 	return this.caches[this.hasher(path)%NUM_SHARDS].Retrieve(path, T)
 }
 
-func (this *ShardedStateCache) IfExists(path string) bool {
-	return this.caches[this.hasher(path)%NUM_SHARDS].IfExists(path)
+func (this *ShardedStateCache) Has(path string) bool {
+	return this.caches[this.hasher(path)%NUM_SHARDS].Has(path)
 }
 
 func (this *ShardedStateCache) Import(transitions []*statecell.StateCell) *ShardedStateCache {

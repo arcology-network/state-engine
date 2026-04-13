@@ -28,7 +28,7 @@ import (
 )
 
 type LiveStorage struct {
-	db    commonintf.PersistentStorage
+	db    commonintf.PersistentStorage[string, []byte]
 	cache *cache.ReadCache[string, any]
 
 	encoder func(string, any) ([]byte, error)
@@ -37,7 +37,7 @@ type LiveStorage struct {
 
 // numShards uint64, isNil func(V) bool, hasher func(K) uint64, cachePolicy *policy.CachePolicy
 func NewLiveStorage(
-	db commonintf.PersistentStorage,
+	db commonintf.PersistentStorage[string, []byte],
 	encoder func(string, any) ([]byte, error),
 	decoder func(string, []byte, any) any,
 ) *LiveStorage {
@@ -67,29 +67,29 @@ func (this *LiveStorage) Cache(any) any                                 { return
 func (this *LiveStorage) Encoder(any) func(string, any) ([]byte, error) { return this.encoder }
 func (this *LiveStorage) Decoder(any) func(string, []byte, any) any     { return this.decoder }
 
-func (this *LiveStorage) GetBackend() commonintf.PersistentStorage   { return this.db }
-func (this *LiveStorage) SetBackend(db commonintf.PersistentStorage) { this.db = db }
+func (this *LiveStorage) GetBackend() commonintf.PersistentStorage[string, []byte]   { return this.db }
+func (this *LiveStorage) SetBackend(db commonintf.PersistentStorage[string, []byte]) { this.db = db }
 
 // Write directly to the local cache. This only happends
 // when we are doing special initialization of the storage.
 func (this *LiveStorage) Write(key string, v any) error {
 	this.cache.Set(key, v)
 	encoded, _ := this.encoder(key, v)
-	return this.db.BatchSet([]string{key}, [][]byte{encoded})
+	return this.db.SetBatch([]string{key}, [][]byte{encoded})
 }
 
 // Batch Write directly to the local cache.
 func (this *LiveStorage) BatchWrite(keys []string, values []any) error {
-	this.cache.BatchSet(keys, values) // update the local cache
+	this.cache.SetBatch(keys, values) // update the local cache
 	encoded := make([][]byte, len(keys))
 	for i := 0; i < len(keys); i++ {
 		encoded[i], _ = this.encoder(keys[i], values[i])
 	}
-	return this.db.BatchSet(keys, encoded)
+	return this.db.SetBatch(keys, encoded)
 }
 
 // No access tracking
-func (this *LiveStorage) IfExists(key string) bool {
+func (this *LiveStorage) Has(key string) bool {
 	v, _ := this.Retrieve(key, nil)
 	return v != nil
 }
@@ -125,7 +125,7 @@ func (this *LiveStorage) Retrieve(key string, T any) (any, error) {
 }
 
 func (this *LiveStorage) BatchRetrieve(keys []string, T []any) []any {
-	values, _ := this.cache.BatchGet(keys) // From the local cache first
+	values, _ := this.cache.GetBatch(keys) // From the local cache first
 	if slice.Count(values, nil) == 0 {     // All found
 		return values
 	}
@@ -139,7 +139,7 @@ func (this *LiveStorage) BatchRetrieve(keys []string, T []any) []any {
 		}
 	}
 
-	if data, err := this.db.BatchGet(queryKeys); err == nil { // search for the values that aren't in the cache
+	if data, err := this.db.GetBatch(queryKeys); err == nil { // search for the values that aren't in the cache
 		for i, idx := range queryIdxes {
 			if data[i] != nil {
 				if len(T) > 0 {
@@ -149,7 +149,7 @@ func (this *LiveStorage) BatchRetrieve(keys []string, T []any) []any {
 				}
 			}
 		}
-		this.cache.BatchSet(keys, values) //update to the local cache and add all the missing values to the cache
+		this.cache.SetBatch(keys, values) //update to the local cache and add all the missing values to the cache
 	}
 	return values
 }

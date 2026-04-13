@@ -47,7 +47,7 @@ func TestDatastoreBasic(t *testing.T) {
 		return []byte(codec.Bytes("").Decode(data).(codec.Bytes))
 	}
 
-	// fileDB.BatchSet(keys, values)
+	// fileDB.SetBatch(keys, values)
 
 	store := NewLiveStorage(fileDB, encoder, decoder)
 
@@ -84,7 +84,7 @@ func TestDatastorePersistentStorage(t *testing.T) {
 	encoder := func(_ string, v any) ([]byte, error) { return codec.Bytes(v.([]byte)).Encode(), nil }
 	decoder := func(_ string, data []byte, _ any) any { return codec.Bytes("").Decode(data) }
 
-	// fileDB.BatchSet(keys, values)
+	// fileDB.SetBatch(keys, values)
 
 	store := NewLiveStorage(fileDB, encoder, decoder)
 
@@ -93,7 +93,7 @@ func TestDatastorePersistentStorage(t *testing.T) {
 		vs[i] = values[i]
 	}
 
-	if err := store.db.BatchSet(keys, values); err != nil {
+	if err := store.db.SetBatch(keys, values); err != nil {
 		t.Error(err)
 	}
 
@@ -133,7 +133,7 @@ func TestDatastorePrefetch(t *testing.T) {
 	encoder := func(_ string, v any) ([]byte, error) { return codec.Bytes(v.([]byte)).Encode(), nil }
 	decoder := func(_ string, data []byte, _ any) any { return codec.Bytes("").Decode(data) }
 
-	// if err := fileDB.BatchSet(keys, values); err != nil {
+	// if err := fileDB.SetBatch(keys, values); err != nil {
 	// 	t.Error(err)
 	// }
 
@@ -143,7 +143,7 @@ func TestDatastorePrefetch(t *testing.T) {
 	for i := 0; i < len(values); i++ {
 		vs[i] = values[i]
 	}
-	store.db.BatchSet(keys, values)
+	store.db.SetBatch(keys, values)
 	store.BatchWrite(keys, vs)
 
 	v, _ := store.Retrieve(keys[0], nil)
@@ -179,7 +179,7 @@ func TestAsyncCommitter(t *testing.T) {
 	encoder := func(_ string, v any) ([]byte, error) { return codec.Bytes(v.([]byte)).Encode(), nil }
 	decoder := func(_ string, data []byte, _ any) any { return codec.Bytes("").Decode(data) }
 
-	// if err := fileDB.BatchSet(keys, values); err != nil {
+	// if err := fileDB.SetBatch(keys, values); err != nil {
 	// 	t.Error(err)
 	// }
 
@@ -189,7 +189,7 @@ func TestAsyncCommitter(t *testing.T) {
 	for i := 0; i < len(values); i++ {
 		vs[i] = values[i]
 	}
-	store.db.BatchSet(keys, values)
+	store.db.SetBatch(keys, values)
 	store.BatchWrite(keys, vs)
 
 	v, _ := store.Retrieve(keys[0], nil)

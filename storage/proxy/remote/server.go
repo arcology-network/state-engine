@@ -49,12 +49,12 @@ func (this *ReadonlyServer) Get(path string) ([]byte, error) {
 }
 
 // Get fromt the server connected
-func (this *ReadonlyServer) BatchGet(paths []string) ([][]byte, error) {
+func (this *ReadonlyServer) GetBatch(paths []string) ([][]byte, error) {
 	bytes := make([][]byte, len(paths))
 	for i, v := range paths {
 		val, err := this.dataStore.Retrieve(v, nil)
 		if err != nil {
-			fmt.Printf("ReadonlyServer BatchGet err: %v k: %v\n", err, v)
+			fmt.Printf("ReadonlyServer GetBatch err: %v k: %v\n", err, v)
 			continue
 		}
 		bytes[i] = this.encoder(val)

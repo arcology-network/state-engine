@@ -56,11 +56,11 @@ func (this *LiveStorageWriter) Commit(_ uint64) {
 	mergedIdxer := new(LiveStgIndexer).Merge(this.buffer)
 	var err error
 	if this.store.db != nil {
-		if err = this.store.db.BatchSet(mergedIdxer.keyBuffer, mergedIdxer.encodedBuffer); err != nil {
+		if err = this.store.db.SetBatch(mergedIdxer.keyBuffer, mergedIdxer.encodedBuffer); err != nil {
 			panic(err)
 		}
 	}
-	this.store.cache.BatchSet(mergedIdxer.keyBuffer, mergedIdxer.valueBuffer) // update the local cache
+	this.store.cache.SetBatch(mergedIdxer.keyBuffer, mergedIdxer.valueBuffer) // update the local cache
 	this.buffer = this.buffer[:0]
 }
 

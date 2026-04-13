@@ -70,7 +70,7 @@ func ParseAddressAndSelector(path string) (evmcommon.Address, [4]byte, error) {
 
 // CreateDefaultPaths creates default paths for an account in the storage committer.
 func CreateDefaultPaths(tx uint64, acct string, store interface {
-	IfExists(string) bool
+	Has(string) bool
 	Write(uint64, string, crdtcommon.CRDT, ...any) (int64, error)
 }) ([]*statecell.StateCell, error) {
 
@@ -100,7 +100,7 @@ func CreateDefaultPaths(tx uint64, acct string, store interface {
 		}
 
 		// fmt.Println(path)
-		if !store.IfExists(path) {
+		if !store.Has(path) {
 			transitions = append(transitions, statecell.NewStateCell(tx, path, 0, 1, 0, v, nil))
 			if _, err := store.Write(tx, path, v); err != nil { // root path
 				return nil, err

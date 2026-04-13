@@ -187,7 +187,7 @@ func (this *EthWorldState) GetAccountProof(addr ethcommon.Address) ([]string, er
 }
 
 // Get the account from the cache first, if not found, get it from the trie.
-func (this *EthWorldState) IfExists(key string) bool {
+func (this *EthWorldState) Has(key string) bool {
 	_, acctKey, suffix := platform.ParseAccountAddr(key)
 	if len(acctKey) == 0 {
 		return false
@@ -388,7 +388,7 @@ func (this *EthWorldState) Trie() *ethmpt.Trie                            { retu
 func (this *EthWorldState) UpdateCacheStats([]any)                        {}
 func (this *EthWorldState) Print()                                        {}
 func (this *EthWorldState) CheckSum() [32]byte                            { return [32]byte{} }
-func (this *EthWorldState) Query(string, func(string, string) bool) ([]string, [][]byte, error) {
+func (this *EthWorldState) Query(string, func(string, []byte) bool) ([]string, [][]byte, error) {
 	return nil, nil, nil
 }
 

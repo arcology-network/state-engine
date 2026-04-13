@@ -82,7 +82,7 @@ func (this *ReadonlyClient) Get(key string) ([]byte, error) {
 }
 
 // Get fromt the server connected
-func (this *ReadonlyClient) BatchGet(keys []string) ([][]byte, error) {
+func (this *ReadonlyClient) GetBatch(keys []string) ([][]byte, error) {
 	if this.localStore != nil {
 		results := make([][]byte, len(keys))
 		for i := 0; i < len(keys); i++ {
@@ -98,7 +98,7 @@ func (this *ReadonlyClient) BatchGet(keys []string) ([][]byte, error) {
 
 // Ready only, do nothing
 func (*ReadonlyClient) Set(path string, v []byte) error           { return nil }
-func (*ReadonlyClient) BatchSet(paths []string, v [][]byte) error { return nil }
-func (*ReadonlyClient) Query(pattern string, condition func(string, string) bool) ([]string, [][]byte, error) {
+func (*ReadonlyClient) SetBatch(paths []string, v [][]byte) error { return nil }
+func (*ReadonlyClient) Query(pattern string, condition func(string, []byte) bool) ([]string, [][]byte, error) {
 	return []string{}, [][]byte{}, nil
 }

@@ -122,11 +122,11 @@ func (this *StorageProxy) Preload(data []byte) any {
 }
 
 // Check if the key exists in the source, which can be a cache or a storage.
-func (this *StorageProxy) IfExists(key string) bool {
+func (this *StorageProxy) Has(key string) bool {
 	if _, ok := this.execCache.Get(key); ok { // Check the cache first
 		return true
 	}
-	return this.execBackend.IfExists(key)
+	return this.execBackend.Has(key)
 }
 
 // Directly write the value into the storage, only for initializing concurrent container storage

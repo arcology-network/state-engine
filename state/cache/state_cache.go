@@ -297,7 +297,7 @@ func (this *ExecutionStateCache) Inject(tx uint64, path string, v crdtcommon.CRD
 func (this *ExecutionStateCache) write(tx uint64, path string, value crdtcommon.CRDT) (*statecell.StateCell, error) {
 	parentPath, _ := statecommon.GetParentPath(path)
 	cell := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default cell wrapper
-	if this.IfExists(parentPath) || tx == statecommon.SYSTEM {    // The parent path exists or to inject the path directly
+	if this.Has(parentPath) || tx == statecommon.SYSTEM {    // The parent path exists or to inject the path directly
 		var err error
 		var inCache bool
 
@@ -407,7 +407,7 @@ func (this *ExecutionStateCache) GetIfCached(path string) (any, bool) {
 
 // Check if the path exists in the writecache or the readonlyBackend.
 // No access count is recorded. Only for internal use. Not exposed to the public API.
-func (this *ExecutionStateCache) IfExists(path string) bool {
+func (this *ExecutionStateCache) Has(path string) bool {
 	// Any path shorter than the ETH_ACCOUNT_PREFIX is a system path.
 	if statecommon.ETH_ACCOUNT_PREFIX_LENGTH >= len(path) {
 		return true
@@ -421,7 +421,7 @@ func (this *ExecutionStateCache) IfExists(path string) bool {
 		return false
 	}
 
-	flag := this.readonlyBackend.IfExists(path) //this.RetrieveShallow(path, nil) != nil
+	flag := this.readonlyBackend.Has(path) //this.RetrieveShallow(path, nil) != nil
 	return flag
 }
 
