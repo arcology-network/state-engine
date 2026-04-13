@@ -107,14 +107,14 @@ func (this *StorageProxy) EthStore() *ethstg.EthWorldState     { return this.eth
 
 // Check if the key exists in the execution storage.
 func (this *StorageProxy) ReadBackend(key string, v crdtcommon.CRDT) (any, error) {
-	return this.Retrieve(key, v)
+	return this.GetAs(key, v)
 }
 
-func (this *StorageProxy) Retrieve(key string, v crdtcommon.CRDT) (any, error) {
+func (this *StorageProxy) GetAs(key string, v crdtcommon.CRDT) (any, error) {
 	if entry, ok := this.execCache.Get(key); ok { // Check the cache first
 		return entry.Value, nil
 	}
-	return this.execBackend.Retrieve(key, v)
+	return this.execBackend.GetAs(key, v)
 }
 
 func (this *StorageProxy) Preload(data []byte) any {

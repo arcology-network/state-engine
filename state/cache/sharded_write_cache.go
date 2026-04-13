@@ -73,8 +73,8 @@ func (this *ShardedStateCache) Write(tx uint64, path string, v crdtcommon.CRDT) 
 // 	return this.caches[this.hasher(path)%NUM_SHARDS].GetIfCached(path)
 // }
 
-func (this *ShardedStateCache) Retrieve(path string, T crdtcommon.CRDT) (interface{}, error) {
-	return this.caches[this.hasher(path)%NUM_SHARDS].Retrieve(path, T)
+func (this *ShardedStateCache) GetAs(path string, T crdtcommon.CRDT) (interface{}, error) {
+	return this.caches[this.hasher(path)%NUM_SHARDS].GetAs(path, T)
 }
 
 func (this *ShardedStateCache) Has(path string) bool {

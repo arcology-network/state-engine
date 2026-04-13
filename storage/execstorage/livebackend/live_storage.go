@@ -90,7 +90,7 @@ func (this *LiveStorage) BatchWrite(keys []string, values []any) error {
 
 // No access tracking
 func (this *LiveStorage) Has(key string) bool {
-	v, _ := this.Retrieve(key, nil)
+	v, _ := this.GetAs(key, nil)
 	return v != nil
 }
 
@@ -111,7 +111,7 @@ func (this *LiveStorage) ReadBackend(key string, T any) (any, error) {
 }
 
 // Get from the local cache first, then from the underlying storage.
-func (this *LiveStorage) Retrieve(key string, T any) (any, error) {
+func (this *LiveStorage) GetAs(key string, T any) (any, error) {
 	// Read from the local cache first
 	if v, _ := this.cache.Get(key); v != nil {
 		return *v, nil
@@ -124,7 +124,7 @@ func (this *LiveStorage) Retrieve(key string, T any) (any, error) {
 	return v, err
 }
 
-func (this *LiveStorage) BatchRetrieve(keys []string, T []any) []any {
+func (this *LiveStorage) BatchGetAs(keys []string, T []any) []any {
 	values, _ := this.cache.GetBatch(keys) // From the local cache first
 	if slice.Count(values, nil) == 0 {     // All found
 		return values

@@ -273,7 +273,7 @@ func (this *EthWorldState) GetAccount(address ethcommon.Address, accesses *ethmp
 }
 
 // Skip the cache and get from the trie
-func (this *EthWorldState) Retrieve(path string, T crdtcommon.CRDT) (any, error) {
+func (this *EthWorldState) GetAs(path string, T crdtcommon.CRDT) (any, error) {
 	_, acctKey, _ := platform.ParseAccountAddr(path) // Get the address
 	if len(acctKey) == 0 {
 		return nil, errors.New("Invalid account: " + acctKey)
@@ -289,14 +289,14 @@ func (this *EthWorldState) Retrieve(path string, T crdtcommon.CRDT) (any, error)
 	account, err := this.GetAccount(address, new(ethmpt.AccessListCache))
 
 	if account != nil {
-		return account.Retrieve(path, T) // Get the storage from the key
+		return account.GetAs(path, T) // Get the storage from the key
 	}
 	return nil, err
 }
 
 // Get the state from the underlying storage, which is itself.
 func (this *EthWorldState) ReadBackend(key string, T crdtcommon.CRDT) (any, error) {
-	return this.Retrieve(key, T)
+	return this.GetAs(key, T)
 }
 
 // The WriteWorldTrie writes the updated accounts to the world trie.
@@ -365,10 +365,10 @@ func (this *EthWorldState) persistToEthStore(blockNum uint64, dirtyAccounts []*A
 	return this.dbErr
 }
 
-func (this *EthWorldState) BatchRetrieve(keys []string, T []crdtcommon.CRDT) []crdtcommon.CRDT {
+func (this *EthWorldState) BatchGetAs(keys []string, T []crdtcommon.CRDT) []crdtcommon.CRDT {
 	values := make([]crdtcommon.CRDT, len(keys))
 	for i := 0; i < len(keys); i++ {
-		v, _ := this.Retrieve(keys[i], T[i])
+		v, _ := this.GetAs(keys[i], T[i])
 		values[i] = v.(crdtcommon.CRDT)
 	}
 	return values

@@ -194,7 +194,7 @@ func (this *Account) Has(path string) bool {
 	return len(buffer) > 0
 }
 
-func (this *Account) Retrieve(path string, T any) (any, error) {
+func (this *Account) GetAs(path string, T any) (any, error) {
 	// Special handling for balance.
 	if strings.HasSuffix(path, statecommon.PATH_BALANCE) {
 		balance, _ := uint256.FromBig(this.StateAccount.Balance.ToBig())

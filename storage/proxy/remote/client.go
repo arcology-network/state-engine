@@ -52,7 +52,7 @@ func NewReadonlyClient(addr string, path string, args ...any) *ReadonlyClient {
 // Get from the server connected
 func (this *ReadonlyClient) Get(key string) ([]byte, error) {
 	if this.localStore != nil {
-		v, err := this.localStore.Retrieve(key, nil)
+		v, err := this.localStore.GetAs(key, nil)
 		if err != nil {
 			return []byte{}, err
 		}

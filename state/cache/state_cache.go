@@ -332,7 +332,7 @@ func (this *ExecutionStateCache) write(tx uint64, path string, value crdtcommon.
 
 // Get the raw value directly WITHOUT tracking the accessing record.
 // Users need to count access themselves.
-func (this *ExecutionStateCache) Retrieve(path string, T crdtcommon.CRDT) (any, error) {
+func (this *ExecutionStateCache) GetAs(path string, T crdtcommon.CRDT) (any, error) {
 	typedv, _, _ := this.LookupForRead(statecommon.SYSTEM, path, T, nil)
 	if typedv == nil || typedv.(crdtcommon.CRDT).IsDeltaApplied() {
 		return typedv, nil
@@ -359,7 +359,7 @@ func (this *ExecutionStateCache) Retrieve(path string, T crdtcommon.CRDT) (any, 
 func (this *ExecutionStateCache) LoadFromCommitted(tx uint64, path string, T crdtcommon.CRDT) *statecell.StateCell {
 	var typedv any
 	if readonlyBackend := this.ReadOnlyStore(); readonlyBackend != nil {
-		typedv, _ = readonlyBackend.Retrieve(path, T) // The readonlyBackend could also be another instance of ExecutionStateCache.
+		typedv, _ = readonlyBackend.GetAs(path, T) // The readonlyBackend could also be another instance of ExecutionStateCache.
 	}
 	return this.NewStateCell().Init(tx, path, 0, 0, 0, typedv, typedv != nil)
 }
