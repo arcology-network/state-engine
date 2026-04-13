@@ -35,13 +35,13 @@ const (
 // which is responsible for a subset of the data. It can be updated in parallel when a transaction generation
 // is completed. But it isn't thread-safe.
 type ShardedStateCache struct {
-	backend crdtcommon.ReadOnlyStore
+	backend crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]
 	caches  [NUM_SHARDS]*ExecutionStateCache
 	hasher  func(string) uint64
 	queue   chan *[]*statecell.StateCell
 }
 
-func NewShardedStateCache(backend crdtcommon.ReadOnlyStore, perPage int, numPages int, hasher func(string) uint64, args ...interface{}) *ShardedStateCache {
+func NewShardedStateCache(backend crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT], perPage int, numPages int, hasher func(string) uint64, args ...interface{}) *ShardedStateCache {
 	writeCache := &ShardedStateCache{
 		backend: backend,
 		hasher:  hasher,
@@ -54,7 +54,9 @@ func NewShardedStateCache(backend crdtcommon.ReadOnlyStore, perPage int, numPage
 	return writeCache
 }
 
-func (this *ShardedStateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore { return this.backend }
+func (this *ShardedStateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT] {
+	return this.backend
+}
 func (this *ShardedStateCache) Cache() [NUM_SHARDS]*ExecutionStateCache { return this.caches }
 
 func (this *ShardedStateCache) NewStateCell(k string) *statecell.StateCell {

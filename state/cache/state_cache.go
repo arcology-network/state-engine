@@ -69,7 +69,7 @@ type ExecutionStateCache struct {
 	// readonlyBackend is the read-only storage interface for accessing *committed*
 	// global state (MPT / flattened DB). Reads fall back to readonlyBackend when
 	// a path is not found locally. readonlyBackend must never be mutated here.
-	readonlyBackend crdtcommon.ReadOnlyStore
+	readonlyBackend crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]
 
 	// localCells stores lazily-materialized StateCells for the current
 	// execution. A cell is added when:
@@ -125,7 +125,7 @@ type ExecutionStateCache struct {
 // This is the local view of state used during transaction execution.
 // It supports lazy materialization, wildcard delete inheritance,
 // and correct conflict detection.
-func NewExecutionStateCache(readonlyBackend crdtcommon.ReadOnlyStore, perPage int, numPages int, args ...any) *ExecutionStateCache {
+func NewExecutionStateCache(readonlyBackend crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT], perPage int, numPages int, args ...any) *ExecutionStateCache {
 	return &ExecutionStateCache{
 		id:                     0,
 		stateVersion:           statecommon.LATEST_STATE_VERSION, // Default to the latest state version
@@ -139,7 +139,7 @@ func NewExecutionStateCache(readonlyBackend crdtcommon.ReadOnlyStore, perPage in
 	}
 }
 
-func (this *ExecutionStateCache) SetReadOnlyBackend(backend crdtcommon.ReadOnlyStore) *ExecutionStateCache {
+func (this *ExecutionStateCache) SetReadOnlyBackend(backend crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]) *ExecutionStateCache {
 	this.readonlyBackend = backend
 	return this
 }
@@ -153,7 +153,7 @@ func (this *ExecutionStateCache) SetVersion(version uint64) { this.stateVersion 
 func (this *ExecutionStateCache) addToLocalCache(v *statecell.StateCell) {
 	this.localCells[*v.GetPath()] = v
 }
-func (this *ExecutionStateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore {
+func (this *ExecutionStateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT] {
 	return this.readonlyBackend
 }
 func (this *ExecutionStateCache) Cache() *map[string]*statecell.StateCell { return &this.localCells }
@@ -297,7 +297,7 @@ func (this *ExecutionStateCache) Inject(tx uint64, path string, v crdtcommon.CRD
 func (this *ExecutionStateCache) write(tx uint64, path string, value crdtcommon.CRDT) (*statecell.StateCell, error) {
 	parentPath, _ := statecommon.GetParentPath(path)
 	cell := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default cell wrapper
-	if this.Has(parentPath) || tx == statecommon.SYSTEM {    // The parent path exists or to inject the path directly
+	if this.Has(parentPath) || tx == statecommon.SYSTEM {         // The parent path exists or to inject the path directly
 		var err error
 		var inCache bool
 
@@ -421,7 +421,7 @@ func (this *ExecutionStateCache) Has(path string) bool {
 		return false
 	}
 
-	flag := this.readonlyBackend.Has(path) //this.RetrieveShallow(path, nil) != nil
+	flag := this.readonlyBackend.Has(path) //this.GetAsShallow(path, nil) != nil
 	return flag
 }
 

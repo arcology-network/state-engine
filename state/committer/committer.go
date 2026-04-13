@@ -42,7 +42,7 @@ import (
 */
 
 type StateCommitter struct {
-	readonlyStore crdtcommon.ReadOnlyStore
+	readonlyStore crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]
 	platform      *platform.Platform
 
 	writers []crdtcommon.Writer[*statecell.StateCell] // db writers
@@ -60,7 +60,7 @@ type StateCommitter struct {
 // A Committable store is a pair of an index and a store. The index is used to index the input transitions as they are
 // received, and the store is used to commit the indexed transitions. Since multiple store can share the same index, each
 // CommittableStore is an indexer and a list of Committable stores.
-func NewStateCommitter(readonlyStore crdtcommon.ReadOnlyStore, writers []crdtcommon.Writer[*statecell.StateCell]) *StateCommitter {
+func NewStateCommitter(readonlyStore crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT], writers []crdtcommon.Writer[*statecell.StateCell]) *StateCommitter {
 	committer := &StateCommitter{
 		readonlyStore: readonlyStore,
 		platform:      platform.NewPlatform(),
@@ -88,8 +88,10 @@ func (this *StateCommitter) New(args ...any) *StateCommitter {
 }
 
 // Importer returns the importer of the StateCommitter.
-func (this *StateCommitter) Store() crdtcommon.ReadOnlyStore { return this.readonlyStore }
-func (this *StateCommitter) SetStore(store crdtcommon.ReadOnlyStore) { // Testing only
+func (this *StateCommitter) Store() crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT] {
+	return this.readonlyStore
+}
+func (this *StateCommitter) SetStore(store crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]) { // Testing only
 	this.readonlyStore = store
 }
 

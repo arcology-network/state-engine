@@ -30,7 +30,7 @@ type ExecutionCacheIndexer struct {
 	filter  func(tran *statecell.StateCell) bool
 }
 
-func NewExecutionCacheIndexer(_ crdtcommon.ReadOnlyStore, version int64, filter func(tran *statecell.StateCell) bool) *ExecutionCacheIndexer {
+func NewExecutionCacheIndexer(store crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT], version int64, filter func(tran *statecell.StateCell) bool) *ExecutionCacheIndexer {
 	return &ExecutionCacheIndexer{
 		filter:  common.IfThen(filter == nil, func(tran *statecell.StateCell) bool { return true }, filter),
 		version: version,

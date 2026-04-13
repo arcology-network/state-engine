@@ -53,7 +53,7 @@ func (this DeltaSequence) sort() DeltaSequence {
 	return this
 }
 
-func (this DeltaSequence) Finalize(store crdtcommon.ReadOnlyStore) *statecell.StateCell {
+func (this DeltaSequence) Finalize(store crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]) *statecell.StateCell {
 	trans := []*statecell.StateCell(this)
 	slice.RemoveIf(&trans, func(_ int, v *statecell.StateCell) bool {
 		return v.GetPath() == nil

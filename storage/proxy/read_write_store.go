@@ -26,7 +26,7 @@ import (
 // It is an abstraction for storage backends that support both read
 // and write operations by providing writers for state cells.
 type ReadWriteStore interface {
-	crdtcommon.ReadOnlyStore
+	crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]
 	GetWriters() []crdtcommon.Writer[*statecell.StateCell]
 	SetVersion([32]byte) error
 }
