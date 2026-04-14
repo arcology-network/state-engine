@@ -41,6 +41,7 @@ import (
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	mempool "github.com/arcology-network/common-lib/exp/mempool"
 	slice "github.com/arcology-network/common-lib/exp/slice"
+	storageintf "github.com/arcology-network/common-lib/storage/interface"
 	statecommon "github.com/arcology-network/state-engine/common"
 )
 
@@ -69,7 +70,7 @@ type ExecutionStateCache struct {
 	// readonlyBackend is the read-only storage interface for accessing *committed*
 	// global state (MPT / flattened DB). Reads fall back to readonlyBackend when
 	// a path is not found locally. readonlyBackend must never be mutated here.
-	readonlyBackend crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]
+	readonlyBackend storageintf.ReadOnlyStore[string, crdtcommon.CRDT]
 
 	// localCells stores lazily-materialized StateCells for the current
 	// execution. A cell is added when:
@@ -125,7 +126,7 @@ type ExecutionStateCache struct {
 // This is the local view of state used during transaction execution.
 // It supports lazy materialization, wildcard delete inheritance,
 // and correct conflict detection.
-func NewExecutionStateCache(readonlyBackend crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT], perPage int, numPages int, args ...any) *ExecutionStateCache {
+func NewExecutionStateCache(readonlyBackend storageintf.ReadOnlyStore[string, crdtcommon.CRDT], perPage int, numPages int, args ...any) *ExecutionStateCache {
 	return &ExecutionStateCache{
 		id:                     0,
 		stateVersion:           statecommon.LATEST_STATE_VERSION, // Default to the latest state version
@@ -139,7 +140,7 @@ func NewExecutionStateCache(readonlyBackend crdtcommon.ReadOnlyStore[string, crd
 	}
 }
 
-func (this *ExecutionStateCache) SetReadOnlyBackend(backend crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]) *ExecutionStateCache {
+func (this *ExecutionStateCache) SetReadOnlyBackend(backend storageintf.ReadOnlyStore[string, crdtcommon.CRDT]) *ExecutionStateCache {
 	this.readonlyBackend = backend
 	return this
 }
@@ -153,7 +154,7 @@ func (this *ExecutionStateCache) SetVersion(version uint64) { this.stateVersion 
 func (this *ExecutionStateCache) addToLocalCache(v *statecell.StateCell) {
 	this.localCells[*v.GetPath()] = v
 }
-func (this *ExecutionStateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT] {
+func (this *ExecutionStateCache) ReadOnlyStore() storageintf.ReadOnlyStore[string, crdtcommon.CRDT] {
 	return this.readonlyBackend
 }
 func (this *ExecutionStateCache) Cache() *map[string]*statecell.StateCell { return &this.localCells }

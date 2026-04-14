@@ -22,6 +22,7 @@ package cache
 import (
 	"runtime"
 
+	storageintf "github.com/arcology-network/common-lib/storage/interface"
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	slice "github.com/arcology-network/common-lib/exp/slice"
@@ -35,13 +36,13 @@ const (
 // which is responsible for a subset of the data. It can be updated in parallel when a transaction generation
 // is completed. But it isn't thread-safe.
 type ShardedStateCache struct {
-	backend crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]
+	backend storageintf.ReadOnlyStore[string, crdtcommon.CRDT]
 	caches  [NUM_SHARDS]*ExecutionStateCache
 	hasher  func(string) uint64
 	queue   chan *[]*statecell.StateCell
 }
 
-func NewShardedStateCache(backend crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT], perPage int, numPages int, hasher func(string) uint64, args ...interface{}) *ShardedStateCache {
+func NewShardedStateCache(backend storageintf.ReadOnlyStore[string, crdtcommon.CRDT], perPage int, numPages int, hasher func(string) uint64, args ...interface{}) *ShardedStateCache {
 	writeCache := &ShardedStateCache{
 		backend: backend,
 		hasher:  hasher,
@@ -54,7 +55,7 @@ func NewShardedStateCache(backend crdtcommon.ReadOnlyStore[string, crdtcommon.CR
 	return writeCache
 }
 
-func (this *ShardedStateCache) ReadOnlyStore() crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT] {
+func (this *ShardedStateCache) ReadOnlyStore() storageintf.ReadOnlyStore[string, crdtcommon.CRDT] {
 	return this.backend
 }
 func (this *ShardedStateCache) Cache() [NUM_SHARDS]*ExecutionStateCache { return this.caches }

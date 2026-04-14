@@ -56,7 +56,7 @@ func TestDatastoreBasic(t *testing.T) {
 		vs[i] = values[i]
 	}
 
-	if err := store.BatchWrite(keys, vs); err != nil {
+	if err := store.SetBatch(keys, vs); err != nil {
 		t.Error(err)
 	}
 
@@ -97,7 +97,7 @@ func TestDatastorePersistentStorage(t *testing.T) {
 		t.Error(err)
 	}
 
-	if err := store.BatchWrite(keys, vs); err != nil {
+	if err := store.SetBatch(keys, vs); err != nil {
 		t.Error(err)
 	}
 
@@ -144,7 +144,7 @@ func TestDatastorePrefetch(t *testing.T) {
 		vs[i] = values[i]
 	}
 	store.db.SetBatch(keys, values)
-	store.BatchWrite(keys, vs)
+	store.SetBatch(keys, vs)
 
 	v, _ := store.GetAs(keys[0], nil)
 
@@ -190,7 +190,7 @@ func TestAsyncCommitter(t *testing.T) {
 		vs[i] = values[i]
 	}
 	store.db.SetBatch(keys, values)
-	store.BatchWrite(keys, vs)
+	store.SetBatch(keys, vs)
 
 	v, _ := store.GetAs(keys[0], nil)
 

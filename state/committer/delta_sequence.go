@@ -31,6 +31,7 @@ import (
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/slice"
 	stgcommon "github.com/arcology-network/state-engine/common"
+	storageintf "github.com/arcology-network/common-lib/storage/interface" 
 )
 
 type DeltaSequence []*statecell.StateCell
@@ -53,7 +54,7 @@ func (this DeltaSequence) sort() DeltaSequence {
 	return this
 }
 
-func (this DeltaSequence) Finalize(store crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT]) *statecell.StateCell {
+func (this DeltaSequence) Finalize(store storageintf.ReadOnlyStore[string, crdtcommon.CRDT]) *statecell.StateCell {
 	trans := []*statecell.StateCell(this)
 	slice.RemoveIf(&trans, func(_ int, v *statecell.StateCell) bool {
 		return v.GetPath() == nil

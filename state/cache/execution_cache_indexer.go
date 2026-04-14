@@ -21,6 +21,7 @@ import (
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/slice"
+	storageintf "github.com/arcology-network/common-lib/storage/interface"
 )
 
 // ExecutionCacheIndexer is the simpliest of all indexers. It does not index anything, just stores the transitions.
@@ -30,7 +31,7 @@ type ExecutionCacheIndexer struct {
 	filter  func(tran *statecell.StateCell) bool
 }
 
-func NewExecutionCacheIndexer(store crdtcommon.ReadOnlyStore[string, crdtcommon.CRDT], version int64, filter func(tran *statecell.StateCell) bool) *ExecutionCacheIndexer {
+func NewExecutionCacheIndexer(store storageintf.ReadOnlyStore[string, crdtcommon.CRDT], version int64, filter func(tran *statecell.StateCell) bool) *ExecutionCacheIndexer {
 	return &ExecutionCacheIndexer{
 		filter:  common.IfThen(filter == nil, func(tran *statecell.StateCell) bool { return true }, filter),
 		version: version,

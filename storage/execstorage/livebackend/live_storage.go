@@ -79,7 +79,7 @@ func (this *LiveStorage) Write(key string, v any) error {
 }
 
 // Batch Write directly to the local cache.
-func (this *LiveStorage) BatchWrite(keys []string, values []any) error {
+func (this *LiveStorage) SetBatch(keys []string, values []any) error {
 	this.cache.SetBatch(keys, values) // update the local cache
 	encoded := make([][]byte, len(keys))
 	for i := 0; i < len(keys); i++ {
