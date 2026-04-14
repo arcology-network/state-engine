@@ -29,8 +29,8 @@ type EthStateSnapshot struct {
 	*ethstg.EthWorldState
 }
 
-func NewEthStateSnapshot(rootHash [32]byte, backend *ethstg.EthShardTrieDB) (*EthStateSnapshot, error) {
-	ethWorldState, err := ethstg.LoadEthTrieByRoot(backend.MainTrieDB(), rootHash)
+func NewEthStateSnapshot(rootHash [32]byte, trieDB *ethstg.EthShardTrieDB) (*EthStateSnapshot, error) {
+	ethWorldState, err := ethstg.LoadEthTrieByRoot(trieDB.MainTrieDB(), rootHash)
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +49,6 @@ func (this *EthStateSnapshot) GetWriters() []crdtcommon.Writer[*statecell.StateC
 func (this *EthStateSnapshot) SetVersion(version [32]byte) error {
 	var err error
 	this.EthWorldState, err =
-		ethstorage.LoadEthTrieByRoot(this.EthWorldState.Backend().MainTrieDB(), version)
+		ethstorage.LoadEthTrieByRoot(this.EthWorldState.EthDB(), version)
 	return err
 }

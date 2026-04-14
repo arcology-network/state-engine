@@ -28,6 +28,7 @@ import (
 
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
+	storageintf "github.com/arcology-network/common-lib/storage/interface"
 	platform "github.com/arcology-network/state-engine/common"
 	ethrlp "github.com/arcology-network/state-engine/storage/codec/ethcodec/rlp"
 	ethcommon "github.com/ethereum/go-ethereum/common"
@@ -65,8 +66,8 @@ type EthWorldState struct {
 	accountCacheEnabled bool
 	accountCache        map[ethcommon.Address]*Account // Account cache holds the accountCache that are being accessed in the current cycle.
 
-	backend *EthShardTrieDB
-	dbErr   error
+	trieDB *EthShardTrieDB
+	dbErr  error
 
 	lock       sync.RWMutex
 	blockRoots map[uint64][32]byte // lookup the root hash for a block number
@@ -103,12 +104,12 @@ func NewEthWorldState(rootHash ethcommon.Hash, dir string, cacheConfig *hashdb.C
 	return NewEthDataStore(paraTrie, shardLvlDB)
 }
 
-func NewEthDataStore(trie *ethmpt.Trie, backend *EthShardTrieDB) *EthWorldState {
+func NewEthDataStore(trie *ethmpt.Trie, trieDB *EthShardTrieDB) *EthWorldState {
 	return &EthWorldState{
 		blockRoots: map[uint64][32]byte{},
 
 		worldStateTrie: trie,
-		backend:        backend,
+		trieDB:         trieDB,
 
 		accountCache: map[ethcommon.Address]*Account{},
 		encoder:      ethrlp.RlpCodec{}.Encode,
@@ -151,7 +152,7 @@ func (this *EthWorldState) Preload(addr []byte) any {
 		acct = NewAccountWithSharedCache( // Account not found, create a new account
 			ethcommon.BytesToAddress(addr),
 			// this.diskShardDBs,
-			this.backend,
+			this.trieDB,
 			EmptyAccountState(),
 			// this.backend.encodedCache,
 		)
@@ -223,8 +224,8 @@ func (this *EthWorldState) Has(key string) bool {
 		return false
 	}
 
-	acct := NewAccount(address, this.backend, stateAccount)
-	acct.storageTrie, err = LoadTrie(this.backend.mainTrieDB, stateAccount.Root)
+	acct := NewAccount(address, this.trieDB, stateAccount)
+	acct.storageTrie, err = LoadTrie(this.trieDB.mainTrieDB, stateAccount.Root)
 	if err != nil {
 		return false
 	}
@@ -261,7 +262,7 @@ func (this *EthWorldState) GetAccount(address ethcommon.Address, accesses *ethmp
 		return &Account{
 			addr:         address,
 			StateAccount: acctState,
-			code:         common.First(this.backend.diskShardDBs[0].Get(acctState.CodeHash)).([]byte), // code
+			code:         common.First(this.trieDB.diskShardDBs[0].Get(acctState.CodeHash)).([]byte), // code
 			storageTrie:  stgTrie,
 			// TrieDirty:    false,
 			// ethdb:        this.backend.mainTrieDB,
@@ -297,6 +298,10 @@ func (this *EthWorldState) GetAs(path string, T crdtcommon.CRDT) (any, error) {
 // Get the state from the underlying storage, which is itself.
 func (this *EthWorldState) ReadBackend(key string, T crdtcommon.CRDT) (any, error) {
 	return this.GetAs(key, T)
+}
+
+func (this *EthWorldState) Backend() storageintf.ReadOnlyStore[string, crdtcommon.CRDT] {
+	return nil
 }
 
 // The WriteWorldTrie writes the updated accounts to the world trie.
@@ -359,7 +364,7 @@ func (this *EthWorldState) persistToEthStore(blockNum uint64, dirtyAccounts []*A
 
 	// var err error
 	var err error
-	if _, this.worldStateTrie, err = this.backend.Commit(this.worldStateTrie, blockNum); err != nil {
+	if _, this.worldStateTrie, err = this.trieDB.Commit(this.worldStateTrie, blockNum); err != nil {
 		this.dbErr = errors.Join(this.dbErr, err)
 	}
 	return this.dbErr
@@ -375,15 +380,14 @@ func (this *EthWorldState) BatchGetAs(keys []string, T []crdtcommon.CRDT) []crdt
 }
 
 func (this *EthWorldState) DiskDBs() [16]ethdb.Database {
-	return this.backend.diskShardDBs
+	return this.trieDB.diskShardDBs
 }
 
 // Place holders
-func (this *EthWorldState) Backend() *EthShardTrieDB                      { return this.backend }
 func (this *EthWorldState) Root() [32]byte                                { return this.worldStateTrie.Hash() }
 func (this *EthWorldState) Encoder(any) func(string, any) ([]byte, error) { return this.encoder }
 func (this *EthWorldState) Decoder(any) func(string, []byte, any) any     { return this.decoder }
-func (this *EthWorldState) EthDB() *triedb.Database                       { return this.backend.mainTrieDB }
+func (this *EthWorldState) EthDB() *triedb.Database                       { return this.trieDB.mainTrieDB }
 func (this *EthWorldState) Trie() *ethmpt.Trie                            { return this.worldStateTrie }
 func (this *EthWorldState) UpdateCacheStats([]any)                        {}
 func (this *EthWorldState) Print()                                        {}
@@ -396,7 +400,7 @@ func (this *EthWorldState) EnableAccountCache()                          { this.
 func (this *EthWorldState) DisableAccountCache()                         { this.accountCacheEnabled = false }
 func (this *EthWorldState) AccountCache() map[ethcommon.Address]*Account { return this.accountCache }
 func (this *EthWorldState) Clear()                                       {}
-func (this *EthWorldState) Close() error                                 { return this.backend.mainTrieDB.Close() }
+func (this *EthWorldState) Close() error                                 { return this.trieDB.mainTrieDB.Close() }
 
 func (this *EthWorldState) Inject(key string, value crdtcommon.CRDT) error { return nil }
 func (this *EthWorldState) GetRootHash(blockNum uint64) [32]byte {

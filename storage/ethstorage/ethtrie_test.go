@@ -60,13 +60,13 @@ func TestHistoryStateProxyWithLvlDB(t *testing.T) {
 		t.Fatalf("Failed to get the correct value for key1: expected %s, got %s", string(value1), string(outVals[1]))
 	}
 
-	root0, newParaTrie, err := worldState.backend.Commit(paraTrie, 0)
+	root0, newParaTrie, err := worldState.trieDB.Commit(paraTrie, 0)
 	if err != nil {
 		t.Fatalf("Failed to commit the trie: %v", err)
 	}
 
 	// Reopen the trie by its root
-	reopened, err := LoadEthTrieByRoot(worldState.backend.mainTrieDB, root0)
+	reopened, err := LoadEthTrieByRoot(worldState.trieDB.mainTrieDB, root0)
 	if err != nil {
 		t.Fatalf("Failed to load trie by root: %v", err)
 	}
@@ -96,13 +96,13 @@ func TestHistoryStateProxyWithLvlDB(t *testing.T) {
 		t.Fatalf("Failed to update the trie: %v", *err)
 	}
 
-	_2ndRoot, _, err := worldState.backend.Commit(newParaTrie, 0)
+	_2ndRoot, _, err := worldState.trieDB.Commit(newParaTrie, 0)
 	if err != nil {
 		t.Fatalf("Failed to commit the trie: %v", err)
 	}
 
 	// Reopen the second trie by its root
-	_2nd_reopened, err := LoadEthTrieByRoot(worldState.backend.mainTrieDB, _2ndRoot)
+	_2nd_reopened, err := LoadEthTrieByRoot(worldState.trieDB.mainTrieDB, _2ndRoot)
 	if err != nil {
 		t.Fatalf("Failed to load trie by root: %v", err)
 	}

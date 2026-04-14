@@ -373,6 +373,10 @@ func (this *ExecutionStateCache) ReadBackend(key string, T crdtcommon.CRDT) (any
 	return nil, errors.New("Error: The readonlyBackend is nil")
 }
 
+func (this *ExecutionStateCache) Backend(key string, T crdtcommon.CRDT) storageintf.ReadOnlyStore[string, crdtcommon.CRDT] {
+	return this.readonlyBackend
+}
+
 func (this *ExecutionStateCache) Read(tx uint64, path string, T crdtcommon.CRDT) (any, any, uint64) {
 	_, stcell, _ := this.LookupForRead(tx, path, T, this.addToLocalCache) // Get the cell wrapper
 
