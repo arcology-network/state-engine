@@ -119,6 +119,10 @@ func (this *Account) GetStorageRoot() [32]byte {
 	return this.storageTrie.Hash()
 }
 
+func (this *Account) GetCode() []byte {
+	return this.code
+}
+
 func (this *Account) GetCodeHash() [32]byte {
 	if this.storageTrie == nil {
 		return crypto.Keccak256Hash(nil) // so the codeHash is the hash of an empty byteslice.
