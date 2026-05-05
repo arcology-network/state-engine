@@ -133,7 +133,10 @@ func TestAccountCode(t *testing.T) {
 		t.Error("Error: Should be empty!!")
 	} else {
 		var acct ethtypes.StateAccount
-		rlp.DecodeBytes(encoded, &acct)
+		if err := rlp.DecodeBytes(encoded, &acct); err != nil {
+			t.Fatalf("failed to decode account state: %v", err)
+		}
+
 		if state.Balance.Uint64() != acct.Balance.Uint64() {
 			t.Error("Error: Blance mismatched!!")
 		}
@@ -152,5 +155,35 @@ func TestAccountCode(t *testing.T) {
 	}
 	if state.Balance.Uint64() != decodeAcct.Balance.Uint64() {
 		t.Error("Error: Blance mismatched!!")
+	}
+}
+
+func TestPersistToEthStoreSkipsNilAndCommitsDuplicateAccounts(t *testing.T) {
+	worldState := NewParallelEthMemDataStore()
+	address := ethcommon.BytesToAddress([]byte("duplicate-account"))
+
+	acct0 := NewAccountWithSharedCache(address, worldState.trieDB, EmptyAccountState())
+	acct1 := NewAccountWithSharedCache(address, worldState.trieDB, EmptyAccountState())
+	acct0.trieDirty = true
+	acct1.trieDirty = true
+
+	if err := worldState.persistToEthStore(7, []*Account{acct0, nil, acct1}); err != nil {
+		t.Fatalf("expected persistToEthStore to handle nil and duplicate accounts: %v", err)
+	}
+
+	if acct0.trieDirty {
+		t.Fatal("expected first duplicate account to be committed")
+	}
+
+	if acct1.trieDirty {
+		t.Fatal("expected second duplicate account to be committed")
+	}
+
+	if got := worldState.GetRootHash(7); got != worldState.Root() {
+		t.Fatal("expected block root to be recorded for the committed block")
+	}
+
+	if got := len(worldState.blockRoots); got != 1 {
+		t.Fatalf("expected one recorded block root, got %d", got)
 	}
 }

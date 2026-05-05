@@ -22,31 +22,32 @@ package cache
 // isCommitted efficiently later.
 type ExecutionCacheWriter struct {
 	*ExecutionCacheIndexer
-	*ExecutionStateCache
+	*ExecutionStateStore
 }
 
-func NewExecutionCacheWriter(writeCache *ExecutionStateCache, version int64) *ExecutionCacheWriter {
+func NewExecutionCacheWriter(writeCache *ExecutionStateStore, version int64) *ExecutionCacheWriter {
 	return &ExecutionCacheWriter{
 		ExecutionCacheIndexer: NewExecutionCacheIndexer(nil, int64(version), nil),
-		ExecutionStateCache:            writeCache,
+		ExecutionStateStore:   writeCache,
 	}
 }
 
 // write cache updates itself every generation. It doesn't need to write to the database.
-func (this *ExecutionCacheWriter) Precommit(_ bool) {
+func (this *ExecutionCacheWriter) Precommit(_ bool) error {
 	this.ExecutionCacheIndexer.Finalize() // Remove the nil transitions
 	for i := range this.ExecutionCacheIndexer.buffer {
-		this.ExecutionStateCache.localCells[*this.ExecutionCacheIndexer.buffer[i].GetPath()] = this.ExecutionCacheIndexer.buffer[i]
+		this.ExecutionStateStore.localCells[*this.ExecutionCacheIndexer.buffer[i].GetPath()] = this.ExecutionCacheIndexer.buffer[i]
 	}
 	this.ExecutionCacheIndexer = NewExecutionCacheIndexer(nil, -1, nil)
-
+	return nil
 }
 
 // The generation cache is transient and will clear itself when all the transitions are isCommitted to
 // the database.
-func (this *ExecutionCacheWriter) Commit(_ uint64) {
-	this.ExecutionStateCache.Clear()
+func (this *ExecutionCacheWriter) Commit(_ uint64) error {
+	this.ExecutionStateStore.Clear()
 	this.ExecutionCacheIndexer.buffer = this.ExecutionCacheIndexer.buffer[:0]
+	return nil
 }
 
 func (this *ExecutionCacheWriter) IsSync() bool { return true } // Execution cache is always synchronous.

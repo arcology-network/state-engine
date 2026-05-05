@@ -17,22 +17,36 @@
 
 package ccstorage
 
-import statecell "github.com/arcology-network/common-lib/crdt/statecell"
+import (
+	"errors"
+
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
+	slice "github.com/arcology-network/common-lib/exp/slice"
+	stgcodec "github.com/arcology-network/common-lib/storage/codec"
+	commonintf "github.com/arcology-network/common-lib/storage/interface"
+)
 
 // LiveStorageWriter is a struct that contains data structure and methods for writing data to concurrent storage.
 // It manages buffered writes and supports both synchronous and asynchronous commit operations to the underlying storage.
-type LiveStorageWriter struct {
-	*LiveStgIndexer
-	buffer  []*LiveStgIndexer
-	store   *LiveStorage
+type LiveStorageWriter[V0, V1 any] struct {
+	*LiveStgIndexer[V0, V1]
+	buffer []*LiveStgIndexer[V0, V1]
+
+	store commonintf.BackendStore[string, V1]
+	// store   *LiveStorage[V0, V1]
 	version int64
 	filter  func(*statecell.StateCell) bool
 }
 
-func NewLiveStorageWriter(store *LiveStorage, version int64, filter func(*statecell.StateCell) bool) *LiveStorageWriter {
-	return &LiveStorageWriter{
-		LiveStgIndexer: NewLiveStgIndexer(store, 0, filter),
-		buffer:         []*LiveStgIndexer{},
+func NewLiveStorageWriter[V0, V1 any](
+	store commonintf.BackendStore[string, V1],
+	version int64,
+	filter func(*statecell.StateCell) bool,
+	codec *stgcodec.StorageCodec[string, V0, string, V1],
+) *LiveStorageWriter[V0, V1] {
+	return &LiveStorageWriter[V0, V1]{
+		LiveStgIndexer: NewLiveStgIndexer(0, codec, filter),
+		buffer:         []*LiveStgIndexer[V0, V1]{},
 		store:          store,
 		version:        version,
 		filter:         filter,
@@ -41,28 +55,57 @@ func NewLiveStorageWriter(store *LiveStorage, version int64, filter func(*statec
 
 // Send the data to the downstream processor. This can be called multiple times
 // before calling Await to commit the data to the state db.
-func (this *LiveStorageWriter) Precommit(isSync bool) {
+func (this *LiveStorageWriter[V0, V1]) Precommit(isSync bool) error {
 	if isSync {
 		this.LiveStgIndexer.Reset()
 	} else {
 		this.LiveStgIndexer.Finalize() // Remove the nil transitions
 		this.buffer = append(this.buffer, this.LiveStgIndexer)
-		this.LiveStgIndexer = NewLiveStgIndexer(this.store, -1, this.filter)
+		this.LiveStgIndexer = NewLiveStgIndexer(-1, this.LiveStgIndexer.codec, this.filter)
 	}
+	return nil
 }
 
 // Await commits the data to the state db.
-func (this *LiveStorageWriter) Commit(_ uint64) {
-	mergedIdxer := new(LiveStgIndexer).Merge(this.buffer)
-	var err error
-	if this.store.db != nil {
-		if err = this.store.db.SetBatch(mergedIdxer.keyBuffer, mergedIdxer.encodedBuffer); err != nil {
-			panic(err)
-		}
-	}
-	this.store.cache.SetBatch(mergedIdxer.keyBuffer, mergedIdxer.valueBuffer) // update the local cache
+func (this *LiveStorageWriter[V0, V1]) Commit(_ uint64) error {
+	mergedIdxer := new(LiveStgIndexer[V0, V1]).Merge(this.buffer)
+	keyToDel, _ := slice.MoveBothIf(
+		&mergedIdxer.keyBuffer,
+		&mergedIdxer.encodedBuffer,
+		func(i int, s string, v *V1) bool {
+			return v == nil
+		},
+	)
+	this.store.DeleteBatch(keyToDel) // Update the local cache for deletions
+
+	encoded := slice.Transform(mergedIdxer.encodedBuffer, func(i int, v *V1) V1 {
+		return *v
+	})
+
+	// Update the persistent storage if it is not nil, otherwise just update the local cache.
+	// var errs []error
+	// backend := this.store.Backend()
+	// if backend != nil {
+	// 	backend.DeleteBatch(keyToDel)
+	// 	errs = backend.SetBatch(mergedIdxer.keyBuffer, encoded)
+	// }
+
+	// Update the local cache, this is for the case when the persistent storage is not nil, we want to update the local cache as well to keep it
+	// consistent with the persistent storage.
+
+	// values := slice.Transform(mergedIdxer.valueBuffer, func(i int, v *V0) V0 {
+	// 	return *v
+	// })
+
+	errs := this.store.SetBatch(mergedIdxer.keyBuffer, encoded) // update the local cache
 	this.buffer = this.buffer[:0]
+
+	var aggregateErr error
+	for _, err := range errs {
+		aggregateErr = errors.Join(aggregateErr, err)
+	}
+	return aggregateErr
 }
 
-func (this *LiveStorageWriter) IsSync() bool { return false } // If the storage needs synchronous writes
-func (this *LiveStorageWriter) Name() string { return "Live Storage Writer" }
+func (this *LiveStorageWriter[V0, V1]) IsSync() bool { return false } // If the storage needs synchronous writes
+func (this *LiveStorageWriter[V0, V1]) Name() string { return "Live Storage Writer" }

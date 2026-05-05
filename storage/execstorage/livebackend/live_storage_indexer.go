@@ -22,40 +22,49 @@ import (
 
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/slice"
+
 	// intf "github.com/arcology-network/state-engine/interfaces"
+	stgcodec "github.com/arcology-network/common-lib/storage/codec"
 )
 
 // An index by account address, transitions have the same Eth account address will be put together in a list
 // This is for ETH storage, concurrent container related sub-paths won't be put into this index.
-type LiveStgIndexer struct {
-	buffer       []*statecell.StateCell
-	importBuffer []*statecell.StateCell
-	liveStg      *LiveStorage
+type LiveStgIndexer[V0, V1 any] struct {
+	buffer []*statecell.StateCell // buffer for the transitions that are ready to be committed conflict-free detection.
 
+	importBuffer []*statecell.StateCell // buffer for importing data, subject to conflict detection.
+	// liveStg       *LiveStorage[V0, V1]
 	partitionIDs  []uint64
 	keyBuffer     []string
-	valueBuffer   []any
-	encodedBuffer [][]byte //The encoded buffer contains the encoded values
+	valueBuffer   []*V0 // For cache using the typed values.
+	encodedBuffer []*V1 //The encoded buffer contains the encoded values
 	filter        func(*statecell.StateCell) bool
+
+	codec *stgcodec.StorageCodec[string, V0, string, V1]
 }
 
-func NewLiveStgIndexer(liveStg *LiveStorage, _ int64, filter func(*statecell.StateCell) bool) *LiveStgIndexer {
-	return &LiveStgIndexer{
-		// buffer:       []*statecell.StateCell{},
+func NewLiveStgIndexer[V0, V1 any](
+	// liveStg *LiveStorage[V0, V1],
+	_ int64,
+	codec *stgcodec.StorageCodec[string, V0, string, V1],
+	filter func(*statecell.StateCell) bool,
+) *LiveStgIndexer[V0, V1] {
+	return &LiveStgIndexer[V0, V1]{
+		buffer:       []*statecell.StateCell{},
+		codec:        codec,
 		importBuffer: []*statecell.StateCell{},
-		liveStg:      liveStg,
-
+		// liveStg:       liveStg,
 		partitionIDs:  []uint64{},
 		filter:        filter,
 		keyBuffer:     []string{},
-		valueBuffer:   []any{},
-		encodedBuffer: [][]byte{},
+		valueBuffer:   []*V0{},
+		encodedBuffer: []*V1{},
 	}
 }
 
 // An index by account address, transitions have the same Eth account address will be put together in a list
 // This is for ETH storage, concurrent container related sub-paths won't be put into this index.
-func (this *LiveStgIndexer) Import(trans []*statecell.StateCell) {
+func (this *LiveStgIndexer[V0, V1]) Import(trans []*statecell.StateCell) {
 	for i := range trans {
 		if trans[i].GetPath() != nil && this.filter(trans[i]) {
 			this.importBuffer = append(this.importBuffer, trans[i])
@@ -63,51 +72,59 @@ func (this *LiveStgIndexer) Import(trans []*statecell.StateCell) {
 	}
 }
 
-func (this *LiveStgIndexer) Reset() {
+func (this *LiveStgIndexer[V0, V1]) Reset() {
 	this.buffer = this.importBuffer
 	this.importBuffer = []*statecell.StateCell{}
 }
 
-func (this *LiveStgIndexer) Finalize() {
+func (this *LiveStgIndexer[V0, V1]) Finalize() {
 	slice.RemoveIf(&this.buffer, func(_ int, v *statecell.StateCell) bool {
 		return v.GetPath() == nil
 	}) // Remove the transitions that are marked
 
 	// Extract the keys and values from the buffer
 	this.keyBuffer = make([]string, len(this.buffer))
-	this.valueBuffer = slice.ParallelTransform(this.buffer, runtime.NumCPU(), func(i int, v *statecell.StateCell) any {
-		this.keyBuffer[i] = *v.GetPath()
-		return v.Value()
-	})
+	this.valueBuffer = slice.ParallelTransform(this.buffer, runtime.NumCPU(),
+		func(i int, v *statecell.StateCell) *V0 {
+			this.keyBuffer[i] = *v.GetPath()
+			if v.Value() != nil {
+				val := v.Value().(V0)
+				return &val
+			}
+			return nil
+		},
+	)
 
 	// Encode the keys and values to the buffer so that they can be written to calcualte the root hash.
-	this.encodedBuffer = make([][]byte, len(this.valueBuffer))
+	// backendCodec := this.codec.ForwardConvert
+	this.encodedBuffer = make([]*V1, len(this.valueBuffer))
 	for i := 0; i < len(this.valueBuffer); i++ {
 		if this.valueBuffer[i] != nil {
-			this.encodedBuffer[i], _ = this.liveStg.encoder(this.keyBuffer[i], this.valueBuffer[i])
+			_, v, _ := this.codec.ForwardConvert(this.keyBuffer[i], *this.valueBuffer[i])
+			this.encodedBuffer[i] = &v
 		}
 	}
 }
 
 // Merge indexers so they can be updated at once.
-func (this *LiveStgIndexer) Merge(idxers []*LiveStgIndexer) *LiveStgIndexer {
+func (this *LiveStgIndexer[V0, V1]) Merge(idxers []*LiveStgIndexer[V0, V1]) *LiveStgIndexer[V0, V1] {
 	slice.Remove(&idxers, nil)
 
 	this.partitionIDs = slice.ConcateDo(idxers,
-		func(idxer *LiveStgIndexer) uint64 { return uint64(len(idxer.partitionIDs)) },
-		func(idxer *LiveStgIndexer) []uint64 { return idxer.partitionIDs })
+		func(idxer *LiveStgIndexer[V0, V1]) uint64 { return uint64(len(idxer.partitionIDs)) },
+		func(idxer *LiveStgIndexer[V0, V1]) []uint64 { return idxer.partitionIDs })
 
 	this.keyBuffer = slice.ConcateDo(idxers,
-		func(idxer *LiveStgIndexer) uint64 { return uint64(len(idxer.keyBuffer)) },
-		func(idxer *LiveStgIndexer) []string { return idxer.keyBuffer })
+		func(idxer *LiveStgIndexer[V0, V1]) uint64 { return uint64(len(idxer.keyBuffer)) },
+		func(idxer *LiveStgIndexer[V0, V1]) []string { return idxer.keyBuffer })
 
 	this.valueBuffer = slice.ConcateDo(idxers,
-		func(idxer *LiveStgIndexer) uint64 { return uint64(len(idxer.valueBuffer)) },
-		func(idxer *LiveStgIndexer) []any { return idxer.valueBuffer })
+		func(idxer *LiveStgIndexer[V0, V1]) uint64 { return uint64(len(idxer.valueBuffer)) },
+		func(idxer *LiveStgIndexer[V0, V1]) []*V0 { return idxer.valueBuffer })
 
 	this.encodedBuffer = slice.ConcateDo(idxers,
-		func(idxer *LiveStgIndexer) uint64 { return uint64(len(idxer.encodedBuffer)) },
-		func(idxer *LiveStgIndexer) [][]byte { return idxer.encodedBuffer })
+		func(idxer *LiveStgIndexer[V0, V1]) uint64 { return uint64(len(idxer.encodedBuffer)) },
+		func(idxer *LiveStgIndexer[V0, V1]) []*V1 { return idxer.encodedBuffer })
 
 	return this
 }

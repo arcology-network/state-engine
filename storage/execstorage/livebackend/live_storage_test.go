@@ -18,17 +18,90 @@
 package ccstorage
 
 import (
+	"errors"
 	"os"
 	"path"
 	"testing"
 
-	"github.com/arcology-network/common-lib/codec"
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	noncommutative "github.com/arcology-network/common-lib/crdt/noncommutative"
+	cachedstore "github.com/arcology-network/common-lib/storage/cachedstore"
+	stgcodec "github.com/arcology-network/common-lib/storage/codec"
 	filedb "github.com/arcology-network/common-lib/storage/filedb"
+	commonintf "github.com/arcology-network/common-lib/storage/interface"
+	stgintf "github.com/arcology-network/common-lib/storage/interface"
+	arcocodec "github.com/arcology-network/state-engine/storage/codec/arcocodec"
 )
 
 var (
 	TEST_ROOT_PATH = path.Join(os.TempDir(), "/filedb/")
 )
+
+func newTestStore(db commonintf.BackendStore[string, []byte]) *cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] {
+	codec := stgcodec.NewStorageCodec(
+		func(key string, value crdtcommon.CRDT) (string, []byte, error) {
+			encoded, err := arcocodec.Codec{}.Encode(key, value)
+			return key, encoded, err
+		},
+		func(key string, data []byte) (string, crdtcommon.CRDT, error) {
+			decoded := arcocodec.Codec{}.Decode(key, data, nil)
+			if decoded == nil {
+				return key, nil, errors.New("failed to decode data")
+			}
+			return key, decoded.(crdtcommon.CRDT), nil
+		},
+	)
+
+	return NewLiveStorage(
+		func(v crdtcommon.CRDT) uint64 { return v.MemSize() },
+		db,
+		codec,
+	)
+}
+
+func newStringValues(values ...string) []crdtcommon.CRDT {
+	out := make([]crdtcommon.CRDT, len(values))
+	for i, value := range values {
+		out[i] = noncommutative.NewString(value)
+	}
+	return out
+}
+
+func encodeValues(t *testing.T, keys []string, values []crdtcommon.CRDT) [][]byte {
+	t.Helper()
+
+	encoded := make([][]byte, len(keys))
+	for i := range keys {
+		var err error
+		encoded[i], err = arcocodec.Codec{}.Encode(keys[i], values[i])
+		if err != nil {
+			t.Fatalf("encode %s: %v", keys[i], err)
+		}
+	}
+	return encoded
+}
+
+func requireNoBatchErrors(t *testing.T, errs []error) {
+	t.Helper()
+
+	for _, err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func requireEqualCRDT(t *testing.T, got any, want crdtcommon.CRDT) {
+	t.Helper()
+
+	typed, ok := got.(crdtcommon.CRDT)
+	if !ok {
+		t.Fatalf("expected crdtcommon.CRDT, got %T", got)
+	}
+	if !typed.Equal(want) {
+		t.Fatalf("unexpected value: got %v want %v", typed.Value(), want.Value())
+	}
+}
 
 func TestDatastoreBasic(t *testing.T) {
 	fileDB, err := filedb.NewFileDB(TEST_ROOT_PATH, 8, 2)
@@ -37,38 +110,22 @@ func TestDatastoreBasic(t *testing.T) {
 	}
 
 	keys := []string{"123", "456", "789"}
-	values := [][]byte{{1, 2, 3}, {4, 5, 6}, {5, 5, 5}}
+	values := newStringValues("alpha", "beta", "gamma")
+	store := newTestStore(fileDB)
 
-	encoder := func(k string, v any) ([]byte, error) {
-		return codec.Bytes(v.([]byte)).Encode(), nil
+	requireNoBatchErrors(t, store.SetBatch(keys, values))
+
+	read, err := store.Get(keys[0])
+	if err != nil {
+		t.Fatal(err)
 	}
+	requireEqualCRDT(t, read, values[0])
 
-	decoder := func(_ string, data []byte, _ any) any {
-		return []byte(codec.Bytes("").Decode(data).(codec.Bytes))
+	read, err = store.Get(keys[1])
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// fileDB.SetBatch(keys, values)
-
-	store := NewLiveStorage(fileDB, encoder, decoder)
-
-	vs := make([]any, len(values))
-	for i := 0; i < len(values); i++ {
-		vs[i] = values[i]
-	}
-
-	if err := store.SetBatch(keys, vs); err != nil {
-		t.Error(err)
-	}
-
-	v, _ := store.GetAs(keys[0], nil)
-	if string(v.([]byte)) != string(values[0]) {
-		t.Error("Error: Values mismatched !")
-	}
-
-	v, _ = store.GetAs(keys[1], nil)
-	if string(v.([]byte)) != string(values[1]) {
-		t.Error("Error: Values mismatched !")
-	}
+	requireEqualCRDT(t, read, values[1])
 }
 
 func TestDatastorePersistentStorage(t *testing.T) {
@@ -78,38 +135,22 @@ func TestDatastorePersistentStorage(t *testing.T) {
 	}
 
 	keys := []string{"123", "456"}
-	values := [][]byte{{1, 2, 3}, {4, 5, 6}}
+	values := newStringValues("persist-a", "persist-b")
+	requireNoBatchErrors(t, fileDB.SetBatch(keys, encodeValues(t, keys, values)))
 
-	//policy := policy.(1234, 1.0)
-	encoder := func(_ string, v any) ([]byte, error) { return codec.Bytes(v.([]byte)).Encode(), nil }
-	decoder := func(_ string, data []byte, _ any) any { return codec.Bytes("").Decode(data) }
+	store := newTestStore(fileDB)
 
-	// fileDB.SetBatch(keys, values)
-
-	store := NewLiveStorage(fileDB, encoder, decoder)
-
-	vs := make([]any, len(values))
-	for i := 0; i < len(values); i++ {
-		vs[i] = values[i]
+	read, err := store.Get(keys[0])
+	if err != nil {
+		t.Fatal(err)
 	}
+	requireEqualCRDT(t, read, values[0])
 
-	if err := store.db.SetBatch(keys, values); err != nil {
-		t.Error(err)
+	read, err = store.Get(keys[1])
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	if err := store.SetBatch(keys, vs); err != nil {
-		t.Error(err)
-	}
-
-	v, _ := store.GetAs(keys[0], nil)
-	if string(v.([]byte)) != string(values[0]) {
-		t.Error("Error: Values mismatched !")
-	}
-
-	v, _ = store.GetAs(keys[1], nil)
-	if string(v.([]byte)) != string(values[1]) {
-		t.Error("Error: Values mismatched !")
-	}
+	requireEqualCRDT(t, read, values[1])
 }
 
 func TestDatastorePrefetch(t *testing.T) {
@@ -123,38 +164,15 @@ func TestDatastorePrefetch(t *testing.T) {
 		"blcc:/eth1.0/account/0x98765/bcd",
 		"blcc:/eth1.0/account/0x12345/efg",
 		"blcc:/eth1.0/account/0x98765/hyq"}
-	values := make([][]byte, 4)
-	values[0] = []byte{1, 2, 3}
-	values[1] = []byte{4, 5, 6}
-	values[2] = []byte{6, 7, 8}
-	values[3] = []byte{8, 9, 0}
+	values := newStringValues("one", "two", "three", "four")
+	requireNoBatchErrors(t, fileDB.SetBatch(keys, encodeValues(t, keys, values)))
 
-	//policy := policy.(1234, 1.0)
-	encoder := func(_ string, v any) ([]byte, error) { return codec.Bytes(v.([]byte)).Encode(), nil }
-	decoder := func(_ string, data []byte, _ any) any { return codec.Bytes("").Decode(data) }
+	store := newTestStore(fileDB)
+	reads, errs := store.GetBatch(keys)
+	requireNoBatchErrors(t, errs)
 
-	// if err := fileDB.SetBatch(keys, values); err != nil {
-	// 	t.Error(err)
-	// }
-
-	store := NewLiveStorage(fileDB, encoder, decoder)
-
-	vs := make([]any, len(values))
-	for i := 0; i < len(values); i++ {
-		vs[i] = values[i]
-	}
-	store.db.SetBatch(keys, values)
-	store.SetBatch(keys, vs)
-
-	v, _ := store.GetAs(keys[0], nil)
-
-	if string(v.([]byte)) != string(values[0]) {
-		t.Error("Error: Values mismatched !")
-	}
-
-	v, _ = store.GetAs(keys[1], nil)
-	if string(v.([]byte)) != string(values[1]) {
-		t.Error("Error: Values mismatched !")
+	for i := range keys {
+		requireEqualCRDT(t, reads[i], values[i])
 	}
 }
 
@@ -169,37 +187,49 @@ func TestAsyncCommitter(t *testing.T) {
 		"blcc:/eth1.0/account/0x98765/bcd",
 		"blcc:/eth1.0/account/0x12345/efg",
 		"blcc:/eth1.0/account/0x98765/hyq"}
-	values := make([][]byte, 4)
-	values[0] = []byte{1, 2, 3}
-	values[1] = []byte{4, 5, 6}
-	values[2] = []byte{6, 7, 8}
-	values[3] = []byte{8, 9, 0}
+	values := newStringValues("one", "two", "three", "four")
+	store := newTestStore(fileDB)
+	requireNoBatchErrors(t, store.SetBatch(keys, values))
 
-	//policy := policy.(1234, 1.0)
-	encoder := func(_ string, v any) ([]byte, error) { return codec.Bytes(v.([]byte)).Encode(), nil }
-	decoder := func(_ string, data []byte, _ any) any { return codec.Bytes("").Decode(data) }
-
-	// if err := fileDB.SetBatch(keys, values); err != nil {
-	// 	t.Error(err)
-	// }
-
-	store := NewLiveStorage(fileDB, encoder, decoder)
-
-	vs := make([]any, len(values))
-	for i := 0; i < len(values); i++ {
-		vs[i] = values[i]
+	freshStore := newTestStore(fileDB)
+	read, err := freshStore.Get(keys[0])
+	if err != nil {
+		t.Fatal(err)
 	}
-	store.db.SetBatch(keys, values)
-	store.SetBatch(keys, vs)
+	requireEqualCRDT(t, read, values[0])
 
-	v, _ := store.GetAs(keys[0], nil)
+	requireNoBatchErrors(t, store.DeleteBatch([]string{keys[0], keys[1]}))
+	freshStore = newTestStore(fileDB)
+	if _, err := freshStore.Get(keys[0]); !errors.Is(err, stgintf.ErrNotFound) {
+		t.Fatalf("expected deleted key to be missing, got %v", err)
+	}
+	read, err = freshStore.Get(keys[2])
+	if err != nil {
+		t.Fatal(err)
+	}
+	requireEqualCRDT(t, read, values[2])
+}
 
-	if string(v.([]byte)) != string(values[0]) {
-		t.Error("Error: Values mismatched !")
+func TestCRDTCodecRoundTrip(t *testing.T) {
+	store := newTestStore(nil)
+	value := noncommutative.NewString("codec-value")
+
+	key, encoded, err := store.Codec().ForwardConvert("k", value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if key != "k" {
+		t.Fatalf("unexpected key: %s", key)
 	}
 
-	v, _ = store.GetAs(keys[1], nil)
-	if string(v.([]byte)) != string(values[1]) {
-		t.Error("Error: Values mismatched !")
+	decodedKey, decodedValue, err := store.Codec().BackwardConvert(key, encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decodedKey != key {
+		t.Fatalf("unexpected decoded key: %s", decodedKey)
+	}
+	if !decodedValue.Equal(value) {
+		t.Fatalf("decoded value mismatch: got %v want %v", decodedValue.Value(), value.Value())
 	}
 }

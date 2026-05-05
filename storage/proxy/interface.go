@@ -20,14 +20,16 @@ package proxy
 import (
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
+
+	// statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	storageintf "github.com/arcology-network/common-lib/storage/interface"
 )
 
 // ReadWriteStore extends ReadOnlyStore with write capabilities.
 // It is an abstraction for storage backends that support both read
 // and write operations by providing writers for state cells.
-type ReadWriteStore interface {
+type VersionedStore interface {
 	storageintf.ReadOnlyStore[string, crdtcommon.CRDT]
-	GetWriters() []crdtcommon.Writer[*statecell.StateCell]
+	GetWriters() []storageintf.StoreWriter[*statecell.StateCell]
 	SetVersion([32]byte) error
 }

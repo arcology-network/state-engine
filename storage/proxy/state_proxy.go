@@ -18,21 +18,27 @@
 package proxy
 
 import (
+	"errors"
 	"math"
 
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	"github.com/arcology-network/common-lib/crdt/commutative"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
-	ccbadger "github.com/arcology-network/common-lib/storage/badger"
-	cachedkvstore "github.com/arcology-network/common-lib/storage/cachedkvstore"
+	cachedstore "github.com/arcology-network/common-lib/storage/cachedstore"
+	stgcodec "github.com/arcology-network/common-lib/storage/codec"
+	commonintf "github.com/arcology-network/common-lib/storage/interface"
+	storageintf "github.com/arcology-network/common-lib/storage/interface"
 	"github.com/arcology-network/common-lib/storage/memdb"
+
 	statecommon "github.com/arcology-network/state-engine/common"
+
 	"github.com/arcology-network/state-engine/storage/ethstorage"
 	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
 	livebackend "github.com/arcology-network/state-engine/storage/execstorage/livebackend"
 	livecache "github.com/arcology-network/state-engine/storage/execstorage/livecache"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 
+	filedb "github.com/arcology-network/common-lib/storage/filedb"
 	arcocodec "github.com/arcology-network/state-engine/storage/codec/arcocodec"
 )
 
@@ -45,117 +51,72 @@ import (
 //
 // EthStorage is used for the Ethereum storage, which is a persistent storage, it holds only the Ethereum state data.
 // The EthStorage won't be used for the execution cache, it is only used for user APIs to query the Ethereum state data.
-
 type StorageProxy struct {
-	platform    *statecommon.Platform
-	execCache   *cachedkvstore.CachedKVStore[string, crdtcommon.CRDT] // An object cache for the backend storage, only updated once at the end of the block.
-	execBackend *livebackend.LiveStorage
-	ethStorage  *ethstg.EthWorldState
+	*cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] // An object cache for the backend storage, only updated once at the end of the block.
+	ethStorage                                                        *ethstg.EthWorldState
+	platform                                                          *statecommon.Platform
 }
 
 // Cache may also have its storeage, this is a cache only store proxy, no storage.
 // Used for testing and debugging.
 func NewCacheOnlyStoreProxy() *StorageProxy {
 	proxy := &StorageProxy{
-		platform:   statecommon.NewPlatform(),
-		ethStorage: ethstg.NewParallelEthMemDataStore(), //ethstg.NewParallelEthMemDataStore(),
-		execBackend: livebackend.NewLiveStorage(
-			nil,
-			arcocodec.Codec{}.Encode,
-			arcocodec.Codec{}.Decode,
-		),
+		platform:    statecommon.NewPlatform(),
+		CachedStore: livecache.NewLiveCache(math.MaxUint64, nil, newLiveCacheCodec()),
+		ethStorage:  ethstg.NewParallelEthMemDataStore(), //ethstg.NewParallelEthMemDataStore(),
 	}
-
-	proxy.execCache = livecache.NewLiveCache(math.MaxUint64)
 	return proxy
 }
 
 // NewMemDBStoreProxy creates a new storage proxy with in-memory databases for
 // both execution and Ethereum storage.
 func NewMemDBStoreProxy() *StorageProxy {
-	proxy := NewCacheOnlyStoreProxy()
-	proxy.execBackend.SetBackend(memdb.NewMemoryDB())
-	return proxy
+	// backend := initByteLiveStorage(memdb.NewMemoryDB())
+	return &StorageProxy{
+		platform:    statecommon.NewPlatform(),
+		CachedStore: livecache.NewLiveCache(math.MaxUint64, memdb.NewMemoryDB(), newLiveCacheCodec()),
+		ethStorage:  ethstg.NewParallelEthMemDataStore(), //ethstg.NewParallelEthMemDataStore(),
+	}
 }
 
-func NewLevelDBStoreProxy(ethDBPath, execDBPath string, cacheCap uint64, cacheConfig *hashdb.Config) *StorageProxy {
+// File DB for execution storage, LevelDB for Ethereum storage.
+func NewFileStoreProxy(ethDBPath, execDBPath string, cacheCap uint64, cacheConfig *hashdb.Config) *StorageProxy {
+	fileDB, err := filedb.NewFileDB(execDBPath, 2, 1)
+	if err != nil {
+		return nil
+	}
+
+	// backend := initByteLiveStorage(db)
 	proxy := &StorageProxy{
-		platform:   statecommon.NewPlatform(),
-		ethStorage: ethstg.NewLevelDBDataStore(ethDBPath, cacheConfig), //ethstg.NewParallelEthMemDataStore(),
-		execCache:  livecache.NewLiveCache(cacheCap),
-		execBackend: livebackend.NewLiveStorage(
-			// memdb.NewMemoryDB(),
-			ccbadger.NewBadgerDB(execDBPath+"_badager"),
-			// ccbadger.NewParaBadgerDB(dbpath+"_pbadager", common.Remainder),
-			arcocodec.Codec{}.Encode,
-			arcocodec.Codec{}.Decode,
-		),
+		platform:    statecommon.NewPlatform(),
+		CachedStore: livecache.NewLiveCache(cacheCap, fileDB, newLiveCacheCodec()),
+		ethStorage:  ethstg.NewLevelDBDataStore(ethDBPath, cacheConfig), //ethstg.NewParallelEthMemDataStore(),
 	}
-	// proxy.execCache = livecache.NewLiveCache(math.MaxUint64)
 	return proxy
 }
 
-func (this *StorageProxy) EnableCache()    {}
-func (this *StorageProxy) DisableCache()   {}
-func (this *StorageProxy) ClearExecCache() { this.execCache.Clear() }
-
-func (this *StorageProxy) ExecCache() *cachedkvstore.CachedKVStore[string, crdtcommon.CRDT] {
-	return this.execCache
-}
-func (this *StorageProxy) ExecStore() *livebackend.LiveStorage { return this.execBackend } // Arcology storage
-func (this *StorageProxy) EthStore() *ethstg.EthWorldState     { return this.ethStorage }  // Eth storage
-
-// Check if the key exists in the execution storage.
-func (this *StorageProxy) ReadBackend(key string, v crdtcommon.CRDT) (any, error) {
-	return this.GetAs(key, v)
-}
-
-func (this *StorageProxy) GetAs(key string, v crdtcommon.CRDT) (any, error) {
-	if entry, ok := this.execCache.Get(key); ok { // Check the cache first
-		return entry.Value, nil
-	}
-	return this.execBackend.GetAs(key, v)
-}
+func (this *StorageProxy) EthStore() *ethstg.EthWorldState { return this.ethStorage } // Eth storage
 
 func (this *StorageProxy) Preload(data []byte) any {
 	return this.ethStorage.Preload(data)
 }
 
-// Check if the key exists in the source, which can be a cache or a storage.
-func (this *StorageProxy) Has(key string) bool {
-	if _, ok := this.execCache.Get(key); ok { // Check the cache first
-		return true
-	}
-	return this.execBackend.Has(key)
-}
-
-// Directly write the value into the storage, only for initializing concurrent container storage
-// and debugging purpose.
-func (this *StorageProxy) Write(key string, v any) error {
-	return this.execBackend.Write(key, v)
-
+// Get the stores that can be
+func (this *StorageProxy) GetWriters() []storageintf.StoreWriter[*statecell.StateCell] {
+	return append(this.SyncWriters(), this.AsyncWriters()...)
 }
 
 // Get the stores that can be
-func (this *StorageProxy) GetWriters() []crdtcommon.Writer[*statecell.StateCell] {
-	return []crdtcommon.Writer[*statecell.StateCell]{
-		livecache.NewLiveCacheWriter(this.execCache, -1, this.NonTransientOnly),
-		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.NonTransientOnly),
-		livebackend.NewLiveStorageWriter(this.execBackend, -1, this.NonTransientOnly),
+func (this *StorageProxy) SyncWriters() []storageintf.StoreWriter[*statecell.StateCell] {
+	return []storageintf.StoreWriter[*statecell.StateCell]{
+		livecache.NewLiveCacheWriter(this.CachedStore.Cache(), -1, this.NonTransientOnly),
 	}
 }
 
-// Get the stores that can be
-func (this *StorageProxy) SyncWriters() []crdtcommon.Writer[*statecell.StateCell] {
-	return []crdtcommon.Writer[*statecell.StateCell]{
-		livecache.NewLiveCacheWriter(this.execCache, -1, this.NonTransientOnly),
-	}
-}
-
-func (this *StorageProxy) AsyncWriters() []crdtcommon.Writer[*statecell.StateCell] {
-	return []crdtcommon.Writer[*statecell.StateCell]{
+func (this *StorageProxy) AsyncWriters() []storageintf.StoreWriter[*statecell.StateCell] {
+	return []storageintf.StoreWriter[*statecell.StateCell]{
 		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.NonTransientOnly),
-		livebackend.NewLiveStorageWriter(this.execBackend, -1, this.NonTransientOnly),
+		livebackend.NewLiveStorageWriter(this.CachedStore.Backend(), -1, this.NonTransientOnly, this.CachedStore.Codec()),
 	}
 }
 
@@ -185,3 +146,66 @@ func (*StorageProxy) All(tran *statecell.StateCell) bool {
 
 // Set the version for the storage proxy, only works for snapshot storages.
 func (this *StorageProxy) SetVersion(_ [32]byte) error { return nil }
+
+func (this *StorageProxy) DebugEnableCache()    {}
+func (this *StorageProxy) DebugDisableCache()   {}
+func (this *StorageProxy) DebugClearexecStore() { this.CachedStore.Cache().Clear() }
+
+func initLiveStorage(db commonintf.BackendStore[string, []byte]) *cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] {
+	codec := stgcodec.NewStorageCodec(
+		func(key string, value crdtcommon.CRDT) (string, []byte, error) {
+			if value != nil {
+				encoded, err := arcocodec.Codec{}.Encode(key, value)
+				return key, encoded, err
+			}
+			return key, nil, nil
+		},
+		func(key string, value []byte) (string, crdtcommon.CRDT, error) {
+			v := (arcocodec.Codec{}).Decode(key, value, nil)
+			if v == nil {
+				return "", nil, errors.New("failed to decode data")
+			}
+			return key, v.(crdtcommon.CRDT), nil
+		},
+	)
+
+	return livebackend.NewLiveStorage(
+		func(v crdtcommon.CRDT) uint64 {
+			if v == nil {
+				return 0
+			}
+			return v.MemSize()
+		},
+		db, // Backend storage
+		codec,
+	)
+}
+
+func initByteLiveStorage(db commonintf.BackendStore[string, []byte]) *cachedstore.CachedStore[string, []byte, string, []byte] {
+	codec := stgcodec.NewStorageCodec(
+		func(key string, value []byte) (string, []byte, error) { return key, value, nil },
+		func(key string, value []byte) (string, []byte, error) { return key, value, nil },
+	)
+
+	return livebackend.NewLiveStorage(
+		func(v []byte) uint64 { return uint64(len(v)) },
+		db, // Backend storage
+		codec,
+	)
+}
+
+func newLiveCacheCodec() *stgcodec.StorageCodec[string, crdtcommon.CRDT, string, []byte] {
+	return stgcodec.NewStorageCodec(
+		func(key string, value crdtcommon.CRDT) (string, []byte, error) {
+			encoded, err := arcocodec.Codec{}.Encode(key, value)
+			return key, encoded, err
+		},
+		func(key string, value []byte) (string, crdtcommon.CRDT, error) {
+			decoded := arcocodec.Codec{}.Decode(key, value, nil)
+			if decoded == nil {
+				return key, nil, nil
+			}
+			return key, decoded.(crdtcommon.CRDT), nil
+		},
+	)
+}

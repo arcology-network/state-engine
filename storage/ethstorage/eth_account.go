@@ -27,12 +27,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/arcology-network/common-lib/exp/slice"
+
 	"github.com/arcology-network/common-lib/codec"
 	common "github.com/arcology-network/common-lib/common"
 	commutative "github.com/arcology-network/common-lib/crdt/commutative"
 	noncommutative "github.com/arcology-network/common-lib/crdt/noncommutative"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
-	"github.com/arcology-network/common-lib/exp/slice"
+	stgintf "github.com/arcology-network/common-lib/storage/interface"
 
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecommon "github.com/arcology-network/state-engine/common"
@@ -58,10 +60,10 @@ type Account struct {
 	code []byte
 
 	storageTrie *ethmpt.Trie // account storage trie
-	trieDirty   bool
+	backend     *EthShardTrieDB
+	err         error
 
-	err     error
-	backend *EthShardTrieDB
+	trieDirty bool
 }
 
 // The diskdbs need to able to handle concurrent accesses themselve
@@ -194,7 +196,48 @@ func (this *Account) Has(path string) bool {
 	return len(buffer) > 0
 }
 
-func (this *Account) GetAs(path string, T any) (any, error) {
+// func (this *Account) GetAs(path string, T any) (any, error) {
+// 	// Special handling for balance.
+// 	if strings.HasSuffix(path, statecommon.PATH_BALANCE) {
+// 		balance, _ := uint256.FromBig(this.StateAccount.Balance.ToBig())
+// 		v := commutative.NewUnboundedU256()
+// 		v.SetValue(*balance)
+// 		return v, nil
+// 	}
+
+// 	// Special handling for nonce.
+// 	if strings.HasSuffix(path, statecommon.PATH_NONCE) {
+// 		v := commutative.NewUnboundedUint64()
+// 		v.SetValue(this.StateAccount.Nonce)
+// 		return v, nil
+// 	}
+
+// 	// Special handling for code.
+// 	if strings.HasSuffix(path, statecommon.PATH_CODE) {
+// 		var err error
+// 		if this.code == nil {
+// 			if this.code, err = this.backend.ShardFromKey(path).Get(this.CodeHash); err != nil {
+// 				return nil, err
+// 			}
+// 		}
+// 		return noncommutative.NewBytes(this.code), nil
+// 	}
+
+// 	// A normal storage value.
+// 	buffer, err := this.storageTrie.Get(this.ToStorageKey(path))
+// 	if len(buffer) == 0 {
+// 		return nil, nil
+// 	}
+
+// 	if T == nil { // A deletion
+// 		return T, nil
+// 	}
+
+// 	// Decode the value based on the type T representing the CRDT type.
+// 	return ethrlp.RlpCodec{}.Decode(path, buffer, T), err
+// }
+
+func (this *Account) Get(path string) (any, error) {
 	// Special handling for balance.
 	if strings.HasSuffix(path, statecommon.PATH_BALANCE) {
 		balance, _ := uint256.FromBig(this.StateAccount.Balance.ToBig())
@@ -221,18 +264,12 @@ func (this *Account) GetAs(path string, T any) (any, error) {
 		return noncommutative.NewBytes(this.code), nil
 	}
 
-	// A normal storage value.
-	buffer, err := this.storageTrie.Get(this.ToStorageKey(path))
-	if len(buffer) == 0 {
-		return nil, nil
+	// Eth Get() returns an empty byte slice if the key is not found, but a lot of existing code relies on nil to
+	// indicate the absence of a value, so we return nil here for better compatibility.
+	if v, err := this.storageTrie.Get(this.ToStorageKey(path)); len(v) > 0 {
+		return v, err
 	}
-
-	if T == nil { // A deletion
-		return T, nil
-	}
-
-	// Decode the value based on the type T representing the CRDT type.
-	return ethrlp.RlpCodec{}.Decode(path, buffer, T), err
+	return nil, stgintf.ErrNotFound
 }
 
 // Update the account's storage trie with the given keys and values.

@@ -23,22 +23,22 @@ import (
 	statecommon "github.com/arcology-network/state-engine/common"
 )
 
-// StateCacheFilter is a post processing filter for ExecutionStateCache.
+// StateCacheFilter is a post processing filter for ExecutionStateStore.
 // It is used to filter out the transitions based on the addresses.
 type StateCacheFilter struct {
-	*ExecutionStateCache
+	*ExecutionStateStore
 	ignoreAddresses map[string]bool
 }
 
 func NewStateCacheFilter(writeCache any) *StateCacheFilter {
 	return &StateCacheFilter{
-		writeCache.(*ExecutionStateCache),
+		writeCache.(*ExecutionStateStore),
 		map[string]bool{},
 	}
 }
 
 func (this *StateCacheFilter) ToBuffer() []*statecell.StateCell {
-	return mapi.Values(*this.ExecutionStateCache.Cache())
+	return mapi.Values(*this.ExecutionStateStore.Cache())
 }
 
 func (this *StateCacheFilter) RemoveByAddress(addr string) {

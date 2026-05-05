@@ -17,8 +17,8 @@
 package proxy
 
 import (
-	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
+	storageintf "github.com/arcology-network/common-lib/storage/interface"
 	"github.com/arcology-network/state-engine/storage/ethstorage"
 	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
 )
@@ -40,8 +40,8 @@ func NewEthStateSnapshot(rootHash [32]byte, trieDB *ethstg.EthShardTrieDB) (*Eth
 	}, nil
 }
 
-func (this *EthStateSnapshot) GetWriters() []crdtcommon.Writer[*statecell.StateCell] {
-	return []crdtcommon.Writer[*statecell.StateCell]{
+func (this *EthStateSnapshot) GetWriters() []storageintf.StoreWriter[*statecell.StateCell] {
+	return []storageintf.StoreWriter[*statecell.StateCell]{
 		ethstorage.NewEthStorageWriter(this.EthWorldState, -1, (&StorageProxy{}).NonTransientOnly),
 	}
 }

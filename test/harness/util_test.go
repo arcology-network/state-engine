@@ -1,3 +1,7 @@
+package harness
+
+import "testing"
+
 /*
  *   Copyright (c) 2026 Arcology Network
 
@@ -15,23 +19,6 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-package ccstorage
-
-import (
-	cachedstore "github.com/arcology-network/common-lib/storage/cachedstore"
-	stgcodec "github.com/arcology-network/common-lib/storage/codec"
-	commonintf "github.com/arcology-network/common-lib/storage/interface"
-)
-
-func NewLiveStorage[V0, V1 any](
-	sizeOf func(V0) uint64,
-	db commonintf.BackendStore[string, V1],
-	codec *stgcodec.StorageCodec[string, V0, string, V1],
-) *cachedstore.CachedStore[string, V0, string, V1] {
-	return cachedstore.NewCachedStore(
-		db,    // Backend storage
-		codec, // Codec for encoding/decoding
-		1024,  // Cache capacity
-		sizeOf,
-	)
+func TestUtil(t *testing.T) {
+	// Just a placeholder for now. We can add some utility function tests here in the future.
 }

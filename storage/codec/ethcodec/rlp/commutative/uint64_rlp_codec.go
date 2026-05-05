@@ -29,7 +29,11 @@ type Uint64RLP struct{ commutative.Uint64 }
 func (this *Uint64RLP) Encode() ([]byte, error) {
 	if this.HasLimits() {
 		min, max := this.Limits()
-		v := []*big.Int{new(big.Int).SetUint64(this.Value().(uint64)), new(big.Int).SetUint64(min.(uint64)), new(big.Int).SetUint64(max.(uint64))}
+		v := []*big.Int{new(big.Int).SetUint64(
+			this.Value().(uint64)),
+			new(big.Int).SetUint64(min.(uint64)),
+			new(big.Int).SetUint64(max.(uint64)),
+		}
 		return rlp.EncodeToBytes(v)
 	}
 	return rlp.EncodeToBytes(this.Value())

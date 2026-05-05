@@ -45,7 +45,7 @@ func NewEthStorageWriter(ethStore *EthWorldState, version int64, filter func(*st
 	}
 }
 
-func (this *EthStorageWriter) Precommit(_ bool) {
+func (this *EthStorageWriter) Precommit(_ bool) error {
 	this.EthIndexer.Finalize() // Remove the nil transitions
 	this.buffer = append(this.buffer, this.EthIndexer)
 
@@ -74,13 +74,15 @@ func (this *EthStorageWriter) Precommit(_ bool) {
 	this.ethStore.WriteWorldTrie(this.EthIndexer.dirtyAccounts)     // Update the world trie
 	this.EthIndexer = NewEthIndexer(this.ethStore, -1, this.filter) // Reset the indexer with a default version number.
 	this.EthIndexer.UnorderedIndexer.Clear()
+	return this.ethStore.dbErr
 }
 
 // Signals a block is completed, time to write to the db.
-func (this *EthStorageWriter) Commit(version uint64) {
+func (this *EthStorageWriter) Commit(version uint64) error {
 	mergedIdxer := new(EthIndexer).Merge(this.buffer[:]) // Merge all the indexers together to commit to the db at once.
 	this.ethStore.persistToEthStore(uint64(mergedIdxer.Version), mergedIdxer.dirtyAccounts)
 	this.buffer = this.buffer[:0]
+	return this.ethStore.dbErr
 }
 
 func (this *EthStorageWriter) IsSync() bool { return false }

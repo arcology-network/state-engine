@@ -28,7 +28,6 @@ import (
 
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
-	storageintf "github.com/arcology-network/common-lib/storage/interface"
 	platform "github.com/arcology-network/state-engine/common"
 	ethrlp "github.com/arcology-network/state-engine/storage/codec/ethcodec/rlp"
 	ethcommon "github.com/ethereum/go-ethereum/common"
@@ -63,8 +62,9 @@ import (
 type EthWorldState struct {
 	worldStateTrie *ethmpt.Trie
 
+	// Account cache holds the accountCache that are being accessed in the current cycle.
+	accountCache        map[ethcommon.Address]*Account
 	accountCacheEnabled bool
-	accountCache        map[ethcommon.Address]*Account // Account cache holds the accountCache that are being accessed in the current cycle.
 
 	trieDB *EthShardTrieDB
 	dbErr  error
@@ -157,8 +157,6 @@ func (this *EthWorldState) Preload(addr []byte) any {
 			// this.backend.encodedCache,
 		)
 	}
-
-	// this.encodedCache) // empty account state
 	return acct
 }
 
@@ -236,13 +234,35 @@ func (this *EthWorldState) Has(key string) bool {
 	return acct.Has(key)
 }
 
+func (this *EthWorldState) Get(path string) (any, error) {
+	_, acctKey, _ := platform.ParseAccountAddr(path) // Get the address
+	if len(acctKey) == 0 {
+		return nil, errors.New("Invalid account: " + acctKey)
+	}
+
+	acctBytes, err := hexutil.Decode(acctKey)
+	if err != nil {
+		return nil, errors.New("Invalid account format: " + acctKey)
+	}
+
+	// Get the account the key belongs to.
+	address := ethcommon.BytesToAddress(acctBytes)
+	account, err := this.GetAccount(address, new(ethmpt.AccessListCache))
+
+	if account != nil {
+		return account.Get(path) // Get the storage from the key
+	}
+	return nil, err
+}
+
 // Get the account from the cache first, if not found, get it from the trie.
-func (this *EthWorldState) GetAccount(address ethcommon.Address, accesses *ethmpt.AccessListCache) (*Account, error) {
+func (this *EthWorldState) GetAccount(address ethcommon.Address, _ *ethmpt.AccessListCache) (*Account, error) {
 	if len(address) == 0 {
 		return nil, errors.New("Invalid account: " + address.String())
 	}
 
-	if v := this.accountCache[address]; v != nil { // Lookup in the cache first
+	// Lookup in the cache first
+	if v := this.accountCache[address]; v != nil {
 		return v, nil
 	}
 
@@ -264,44 +284,10 @@ func (this *EthWorldState) GetAccount(address ethcommon.Address, accesses *ethmp
 			StateAccount: acctState,
 			code:         common.First(this.trieDB.diskShardDBs[0].Get(acctState.CodeHash)).([]byte), // code
 			storageTrie:  stgTrie,
-			// TrieDirty:    false,
-			// ethdb:        this.backend.mainTrieDB,
-			// diskdbShards: this.backend.diskShardDBs,
-			err: nil,
+			err:          nil,
 		}, nil
 	}
 	return nil, err
-}
-
-// Skip the cache and get from the trie
-func (this *EthWorldState) GetAs(path string, T crdtcommon.CRDT) (any, error) {
-	_, acctKey, _ := platform.ParseAccountAddr(path) // Get the address
-	if len(acctKey) == 0 {
-		return nil, errors.New("Invalid account: " + acctKey)
-	}
-
-	acctBytes, err := hexutil.Decode(acctKey)
-	if err != nil {
-		return nil, errors.New("Invalid account format: " + acctKey)
-	}
-
-	// Get the account the key belongs to.
-	address := ethcommon.BytesToAddress(acctBytes)
-	account, err := this.GetAccount(address, new(ethmpt.AccessListCache))
-
-	if account != nil {
-		return account.GetAs(path, T) // Get the storage from the key
-	}
-	return nil, err
-}
-
-// Get the state from the underlying storage, which is itself.
-func (this *EthWorldState) ReadBackend(key string, T crdtcommon.CRDT) (any, error) {
-	return this.GetAs(key, T)
-}
-
-func (this *EthWorldState) Backend() storageintf.ReadOnlyStore[string, crdtcommon.CRDT] {
-	return nil
 }
 
 // The WriteWorldTrie writes the updated accounts to the world trie.
@@ -342,14 +328,18 @@ func (this *EthWorldState) persistToEthStore(blockNum uint64, dirtyAccounts []*A
 
 	// dirtyAccounts may contain the same account multiple times, updating them in parallel directly may cause concurrency issues.
 	// So, we need to merge the accounts and put them in slices, identical accounts will be put together in the same slice.
-	dict := map[ethcommon.Address][]*Account{}
+	uniqueAccts := map[ethcommon.Address][]*Account{}
 	for _, acct := range dirtyAccounts {
-		if acct != nil {
-			dict[acct.addr] = []*Account{}
+		if acct == nil {
+			continue // Skip the nil accounts.
 		}
-		dict[acct.addr] = append((dict[acct.addr]), acct)
+
+		if uniqueAccts[acct.addr] == nil {
+			uniqueAccts[acct.addr] = []*Account{}
+		}
+		uniqueAccts[acct.addr] = append((uniqueAccts[acct.addr]), acct)
 	}
-	_, uniqueDirties := mapi.KVs(dict)
+	_, uniqueDirties := mapi.KVs(uniqueAccts)
 
 	// Write the world trie
 	slice.ParallelForeach(uniqueDirties, runtime.NumCPU(), func(_ int, dirties *[]*Account) {
@@ -370,18 +360,8 @@ func (this *EthWorldState) persistToEthStore(blockNum uint64, dirtyAccounts []*A
 	return this.dbErr
 }
 
-func (this *EthWorldState) BatchGetAs(keys []string, T []crdtcommon.CRDT) []crdtcommon.CRDT {
-	values := make([]crdtcommon.CRDT, len(keys))
-	for i := 0; i < len(keys); i++ {
-		v, _ := this.GetAs(keys[i], T[i])
-		values[i] = v.(crdtcommon.CRDT)
-	}
-	return values
-}
-
-func (this *EthWorldState) DiskDBs() [16]ethdb.Database {
-	return this.trieDB.diskShardDBs
-}
+func (this *EthWorldState) TrieDB() *EthShardTrieDB     { return this.trieDB }
+func (this *EthWorldState) DiskDBs() [16]ethdb.Database { return this.trieDB.diskShardDBs }
 
 // Place holders
 func (this *EthWorldState) Root() [32]byte                                { return this.worldStateTrie.Hash() }

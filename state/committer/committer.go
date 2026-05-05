@@ -46,10 +46,10 @@ type StateCommitter struct {
 	readonlyStore storageintf.ReadOnlyStore[string, crdtcommon.CRDT]
 	platform      *platform.Platform
 
-	writers []crdtcommon.Writer[*statecell.StateCell] // db writers
+	writers []storageintf.StoreWriter[*statecell.StateCell] // db writers
 
-	syncWriters  []crdtcommon.Writer[*statecell.StateCell] // db writers that need to be synchronized
-	asyncWriters []crdtcommon.Writer[*statecell.StateCell] // db writer that is used for asynchronous commit
+	syncWriters  []storageintf.StoreWriter[*statecell.StateCell] // db writers that need to be synchronized
+	asyncWriters []storageintf.StoreWriter[*statecell.StateCell] // db writer that is used for asynchronous commit
 
 	byPath *indexer.UnorderedIndexer[string, *statecell.StateCell, []*statecell.StateCell]
 	byTxID *indexer.UnorderedIndexer[uint64, *statecell.StateCell, []*statecell.StateCell]
@@ -61,7 +61,10 @@ type StateCommitter struct {
 // A Committable store is a pair of an index and a store. The index is used to index the input transitions as they are
 // received, and the store is used to commit the indexed transitions. Since multiple store can share the same index, each
 // CommittableStore is an indexer and a list of Committable stores.
-func NewStateCommitter(readonlyStore storageintf.ReadOnlyStore[string, crdtcommon.CRDT], writers []crdtcommon.Writer[*statecell.StateCell]) *StateCommitter {
+func NewStateCommitter(
+	readonlyStore storageintf.ReadOnlyStore[string, crdtcommon.CRDT],
+	writers []storageintf.StoreWriter[*statecell.StateCell],
+) *StateCommitter {
 	committer := &StateCommitter{
 		readonlyStore: readonlyStore,
 		platform:      platform.NewPlatform(),
@@ -72,7 +75,7 @@ func NewStateCommitter(readonlyStore storageintf.ReadOnlyStore[string, crdtcommo
 	}
 
 	// Filter the writers into synchronous first.
-	committer.syncWriters = slice.MoveIf(&writers, func(_ int, v crdtcommon.Writer[*statecell.StateCell]) bool {
+	committer.syncWriters = slice.MoveIf(&writers, func(_ int, v storageintf.StoreWriter[*statecell.StateCell]) bool {
 		return v.IsSync()
 	})
 
@@ -178,7 +181,7 @@ func (this *StateCommitter) DebugPrecommit(txs []uint64) *StateCommitter {
 // Only the global write cache needs to be synchronized before the next precommit or commit.
 func (this *StateCommitter) SyncPrecommit() {
 	slice.ParallelForeach(this.writers, len(this.writers),
-		func(i int, writer *crdtcommon.Writer[*statecell.StateCell]) {
+		func(i int, writer *storageintf.StoreWriter[*statecell.StateCell]) {
 			// Eth storage only serves user API enquiries. It has nothing to do with the
 			// transitions execution. So we do not need to precommit it synchronously.
 			if !common.IsType[*ethstorage.EthStorageWriter](*writer) {
@@ -190,7 +193,7 @@ func (this *StateCommitter) SyncPrecommit() {
 // Only the global write cache needs to be synchronized before the next precommit or commit.
 func (this *StateCommitter) AsyncPrecommit() {
 	slice.ParallelForeach(this.writers, len(this.writers),
-		func(_ int, writer *crdtcommon.Writer[*statecell.StateCell]) {
+		func(_ int, writer *storageintf.StoreWriter[*statecell.StateCell]) {
 			if !common.IsType[*cache.ExecutionCacheWriter](*writer) {
 				(*writer).Precommit(false)
 			}
@@ -210,7 +213,7 @@ func (this *StateCommitter) DebugCommit(blockNum uint64) *StateCommitter {
 // For the time sensitive writers, do sync commit first, like the live cache.
 func (this *StateCommitter) SyncCommit(blockNum uint64) {
 	slice.ParallelForeach(this.syncWriters, len(this.syncWriters),
-		func(_ int, writer *crdtcommon.Writer[*statecell.StateCell]) {
+		func(_ int, writer *storageintf.StoreWriter[*statecell.StateCell]) {
 			(*writer).Commit(blockNum)
 		})
 }
@@ -219,7 +222,7 @@ func (this *StateCommitter) SyncCommit(blockNum uint64) {
 // For the time insensitive writers, do async commit later, like the eth storage.
 func (this *StateCommitter) AsyncCommit(blockNum uint64) {
 	slice.ParallelForeach(this.asyncWriters, len(this.asyncWriters),
-		func(_ int, writer *crdtcommon.Writer[*statecell.StateCell]) {
+		func(_ int, writer *storageintf.StoreWriter[*statecell.StateCell]) {
 			(*writer).Commit(blockNum)
 		})
 }

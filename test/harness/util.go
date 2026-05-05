@@ -25,16 +25,15 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	// callee "github.com/arcology-network/scheduler/callee"
+
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
-	stateengine "github.com/arcology-network/state-engine"
 	statecommon "github.com/arcology-network/state-engine/common"
+	statecache "github.com/arcology-network/state-engine/state/cache"
 	statecommitter "github.com/arcology-network/state-engine/state/committer"
 )
 
-func CreateAccountInStore(accts ...[20]byte) (*stateengine.StateStore, error) {
-	sstore := stateengine.NewStateStore(proxy.NewMemDBStoreProxy())
-
-	writeCache := sstore.ExecutionStateCache
+func CreateAccountInStore(accts ...[20]byte) (*statecache.ExecutionStateStore, error) {
+	writeCache := statecache.NewDefaultExecutionStateStore(proxy.NewMemDBStoreProxy())
 
 	for _, sender := range accts {
 		if _, err := statecommon.CreateDefaultPaths(1, hexutil.Encode(sender[:]), writeCache); err != nil { // NewAccount account structure {
@@ -48,16 +47,25 @@ func CreateAccountInStore(accts ...[20]byte) (*stateengine.StateStore, error) {
 	buffer := statecell.StateCells(acctTrans).Encode()
 	statecell.StateCells{}.Decode(buffer)
 
-	committer := statecommitter.NewStateCommitter(sstore, sstore.GetWriters())
+	storeProxy, ok := writeCache.CommittedStore().(*proxy.StorageProxy)
+	if !ok {
+		return nil, errors.New("failed to get storage proxy from execution state store")
+	}
+
+	committer := statecommitter.NewStateCommitter(writeCache, storeProxy.GetWriters())
 	committer.Import(acctTrans)
 	committer.DebugPrecommit([]uint64{1})
 	committer.DebugCommit(10)
-	return sstore, nil
+	return writeCache, nil
 }
 
 // InjectTransitions creates accounts in the state store by injecting state transitions.
-func InjectTransitions(sstore *stateengine.StateStore, keys []string, vals []crdtcommon.CRDT) error {
-	writeCache := sstore.ExecutionStateCache
+func InjectTransitions(writeCache *statecache.ExecutionStateStore, keys []string, vals []crdtcommon.CRDT) error {
+	storeProxy, ok := writeCache.CommittedStore().(*proxy.StorageProxy)
+	if !ok {
+		return errors.New("failed to get storage proxy from execution state store")
+	}
+
 	var aggregatedErr error
 	for i := range keys {
 		_, err := writeCache.Inject(statecommon.SYSTEM, keys[i], vals[i])
@@ -65,7 +73,7 @@ func InjectTransitions(sstore *stateengine.StateStore, keys []string, vals []crd
 	}
 
 	acctTrans := writeCache.Export(statecell.Sorter)
-	committer := statecommitter.NewStateCommitter(sstore, sstore.GetWriters())
+	committer := statecommitter.NewStateCommitter(writeCache, storeProxy.GetWriters())
 	committer.Import(acctTrans)
 	committer.DebugPrecommit([]uint64{1})
 	committer.DebugCommit(10) //block height 10

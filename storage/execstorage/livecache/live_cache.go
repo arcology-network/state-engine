@@ -18,18 +18,26 @@ package livecache
 
 import (
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
-	cachedkvstore "github.com/arcology-network/common-lib/storage/cachedkvstore"
+	cachedstore "github.com/arcology-network/common-lib/storage/cachedstore"
+	stgcodec "github.com/arcology-network/common-lib/storage/codec"
+	interfaces "github.com/arcology-network/common-lib/storage/interface"
 )
 
-type LiveCache = cachedkvstore.CachedKVStore[string, crdtcommon.CRDT]
-
-func NewLiveCache(cacheCap uint64) *LiveCache {
-	store := cachedkvstore.NewCachedKVStore[string](nil, cacheCap, func(v crdtcommon.CRDT) uint64 {
-		if v == nil {
-			return 0
-		}
-		return v.MemSize()
-	})
-	store.SetLocalOnly(true)
+func NewLiveCache(
+	cacheCap uint64,
+	backend interfaces.BackendStore[string, []byte],
+	codec *stgcodec.StorageCodec[string, crdtcommon.CRDT, string, []byte],
+) *cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] {
+	store := cachedstore.NewCachedStore(
+		backend,
+		codec,
+		cacheCap,
+		func(v crdtcommon.CRDT) uint64 {
+			if v == nil {
+				return 0
+			}
+			return v.MemSize()
+		},
+	)
 	return store
 }

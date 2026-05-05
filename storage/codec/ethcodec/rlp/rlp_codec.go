@@ -18,8 +18,7 @@
 package ethrlp
 
 import (
-
-	// "github.com/arcology-network/concurrenturl/commutative"
+	"reflect"
 
 	crdtc "github.com/arcology-network/common-lib/crdt/commutative"
 	crdtnc "github.com/arcology-network/common-lib/crdt/noncommutative"
@@ -50,6 +49,8 @@ func (RlpCodec) Encode(key string, v any) ([]byte, error) {
 		return (&noncommcodec.Int64RLP{Int64: *(v)}).Encode()
 	case *crdtnc.Uint64:
 		return (&noncommcodec.Uint64RLP{Uint64: *(v)}).Encode()
+	case *crdtnc.Uint32:
+		return (&noncommcodec.Uint32RLP{Uint32: *(v)}).Encode()
 	case *crdtnc.Bigint:
 		return (&noncommcodec.BigintRLP{Bigint: *(v)}).Encode()
 	case *crdtnc.Bytes:
@@ -58,11 +59,15 @@ func (RlpCodec) Encode(key string, v any) ([]byte, error) {
 		return (&noncommcodec.StringRLP{String: *(v)}).Encode()
 
 	default:
-		panic("RlpCodec Encoder: unsupported type for RlpCodec codec")
+		panic("RlpCodec Encoder: unsupported type for RlpCodec encoder")
 	}
 }
 
-func (RlpCodec) Decode(key string, buffer []byte, T any) any {
+func (RlpCodec) Decode(_ string, buffer []byte, T any) any {
+	if T == nil {
+		return buffer
+	}
+
 	switch T.(type) {
 	// Commutative types
 	case *crdtc.Uint64:
@@ -79,6 +84,8 @@ func (RlpCodec) Decode(key string, buffer []byte, T any) any {
 		return new(noncommcodec.Int64RLP).Decode(buffer)
 	case *crdtnc.Uint64:
 		return new(noncommcodec.Uint64RLP).Decode(buffer)
+	case *crdtnc.Uint32:
+		return new(noncommcodec.Uint32RLP).Decode(buffer)
 	case *crdtnc.Bigint:
 		return new(noncommcodec.BigintRLP).Decode(buffer)
 	case *crdtnc.Bytes:
@@ -87,6 +94,6 @@ func (RlpCodec) Decode(key string, buffer []byte, T any) any {
 		return new(noncommcodec.StringRLP).Decode(buffer)
 
 	default:
-		panic("RlpCodec Decoder: unsupported type for RlpCodec codec")
+		panic("RlpCodec Decoder: unsupported type for RlpCodec decoder: " + reflect.TypeOf(T).String())
 	}
 }

@@ -15,13 +15,13 @@ func TestRlpCodecUint32(t *testing.T) {
 		t.Fatal("encode error:", err)
 	}
 
-	decoded := (RlpCodec{}).Decode("", encoded, nil).(*crdtnc.Uint32)
+	decoded := (RlpCodec{}).Decode("", encoded, crdtnc.NewUint32(0)).(*crdtnc.Uint32)
 	if !decoded.Equal(value) {
 		t.Fatal("decode mismatch")
 	}
 }
 
-func TestRlpCodecIgnoresPrototype(t *testing.T) {
+func TestRlpCodecNilPrototypeReturnsRawBytes(t *testing.T) {
 	value := crdtc.NewUnboundedUint64().(*crdtc.Uint64)
 	value.SetValue(uint64(88))
 
@@ -30,7 +30,22 @@ func TestRlpCodecIgnoresPrototype(t *testing.T) {
 		t.Fatal("encode error:", err)
 	}
 
-	decoded := (RlpCodec{}).Decode("", encoded, crdtnc.NewUint32(1)).(*crdtc.Uint64)
+	decoded := (RlpCodec{}).Decode("", encoded, nil).([]byte)
+	if string(decoded) != string(encoded) {
+		t.Fatal("expected nil prototype to return raw bytes")
+	}
+}
+
+func TestRlpCodecDecodesFromPrototype(t *testing.T) {
+	value := crdtc.NewUnboundedUint64().(*crdtc.Uint64)
+	value.SetValue(uint64(88))
+
+	encoded, err := (RlpCodec{}).Encode("", value)
+	if err != nil {
+		t.Fatal("encode error:", err)
+	}
+
+	decoded := (RlpCodec{}).Decode("", encoded, crdtc.NewUnboundedUint64()).(*crdtc.Uint64)
 	if decoded.Value().(uint64) != 88 {
 		t.Fatal("decode mismatch")
 	}
