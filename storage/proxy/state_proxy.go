@@ -29,6 +29,7 @@ import (
 	commonintf "github.com/arcology-network/common-lib/storage/interface"
 	storageintf "github.com/arcology-network/common-lib/storage/interface"
 	"github.com/arcology-network/common-lib/storage/memdb"
+	pebbledb "github.com/arcology-network/common-lib/storage/pebble"
 
 	statecommon "github.com/arcology-network/state-engine/common"
 
@@ -90,6 +91,22 @@ func NewFileStoreProxy(ethDBPath, execDBPath string, cacheCap uint64, cacheConfi
 	proxy := &StorageProxy{
 		platform:    statecommon.NewPlatform(),
 		CachedStore: livecache.NewLiveCache(cacheCap, fileDB, newLiveCacheCodec()),
+		ethStorage:  ethstg.NewLevelDBDataStore(ethDBPath, cacheConfig), //ethstg.NewParallelEthMemDataStore(),
+	}
+	return proxy
+}
+
+// File DB for execution storage, LevelDB for Ethereum storage.
+func NewPebbleDBProxy(ethDBPath, execDBPath string, cacheCap uint64, cacheConfig *hashdb.Config) *StorageProxy {
+	pebbleDB, err := pebbledb.NewPebbleDB(execDBPath)
+	if err != nil {
+		return nil
+	}
+
+	// backend := initByteLiveStorage(db)
+	proxy := &StorageProxy{
+		platform:    statecommon.NewPlatform(),
+		CachedStore: livecache.NewLiveCache(cacheCap, pebbleDB, newLiveCacheCodec()),
 		ethStorage:  ethstg.NewLevelDBDataStore(ethDBPath, cacheConfig), //ethstg.NewParallelEthMemDataStore(),
 	}
 	return proxy

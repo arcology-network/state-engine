@@ -19,6 +19,7 @@ package proxy
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/arcology-network/common-lib/crdt/commutative"
@@ -130,6 +131,60 @@ func TestStorageProxyHasAndGetMissingKey(t *testing.T) {
 	}
 	if v != nil {
 		t.Fatalf("expected nil value for missing key after cache clear, got %T", v)
+	}
+}
+
+func TestNewPebbleDBProxySetGetHasAndReadBackend(t *testing.T) {
+	root := t.TempDir()
+	proxy := NewPebbleDBProxy(filepath.Join(root, "eth"), filepath.Join(root, "exec"), 128, nil)
+	if proxy == nil {
+		t.Fatal("NewPebbleDBProxy returned nil")
+	}
+	if proxy.Backend() == nil || proxy.Cache() == nil || proxy.EthStore() == nil {
+		t.Fatal("expected Pebble proxy stores to be initialized")
+	}
+
+	key := "/acct/pebble/balance"
+	want := newUint64(77)
+
+	if err := proxy.Set(key, want); err != nil {
+		t.Fatalf("Set failed: %v", err)
+	}
+
+	if !proxy.Has(key) {
+		t.Fatal("expected Has to return true for existing key")
+	}
+
+	got, err := proxy.Get(key)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected Get to return non-nil value")
+	}
+
+	gotTyped, ok := got.(*commutative.Uint64)
+	if !ok {
+		t.Fatalf("expected cached value type *commutative.Uint64, got %T", got)
+	}
+	v, _, _ := gotTyped.Get()
+	if v.(uint64) != 77 {
+		t.Fatalf("expected cached value 77, got %v", v)
+	}
+
+	proxy.DebugClearexecStore()
+
+	gotRaw, err := proxy.Get(key)
+	if err != nil {
+		t.Fatalf("Get (backend) failed: %v", err)
+	}
+	gotTyped, ok = gotRaw.(*commutative.Uint64)
+	if !ok {
+		t.Fatalf("expected decoded backend value type *commutative.Uint64, got %T", gotRaw)
+	}
+	v, _, _ = gotTyped.Get()
+	if v.(uint64) != 77 {
+		t.Fatalf("expected decoded value 77, got %v", v)
 	}
 }
 
