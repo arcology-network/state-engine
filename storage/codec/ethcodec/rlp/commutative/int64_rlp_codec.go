@@ -37,22 +37,22 @@ func (i *Int64RLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(v)
 }
 
-func (Int64RLP) Decode(buffer []byte) any {
+func (Int64RLP) Decode(buffer []byte) (any, error) {
 	if len(buffer) == 9 {
 		var vBuf []byte
 		if err := rlp.DecodeBytes(buffer, &vBuf); err != nil {
-			return nil
+			return nil, err
 		}
 
 		v := new(codec.Int64).Decode(vBuf).(codec.Int64)
 		this := commutative.NewUnboundedInt64().(*commutative.Int64)
 		this.SetValue(int64(v))
-		return this
+		return this, nil
 	}
 
 	var arr []any
 	if err := rlp.DecodeBytes(buffer, &arr); err != nil {
-		return nil
+		return nil, err
 	}
 
 	var this *commutative.Int64
@@ -61,5 +61,5 @@ func (Int64RLP) Decode(buffer []byte) any {
 	max := new(codec.Int64).Decode(arr[2].([]byte)).(codec.Int64)
 	this = commutative.NewBoundedInt64(int64(min), int64(max)).(*commutative.Int64)
 	this.SetValue(int64(v))
-	return this
+	return this, nil
 }

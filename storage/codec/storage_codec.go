@@ -50,9 +50,9 @@ func (this *StorageCodec) Encode(key string, v any) ([]byte, error) {
 }
 
 // The Decode function chooses the right codec based on the the key string.
-func (this *StorageCodec) Decode(key string, buffer []byte, T any) any {
+func (this *StorageCodec) Decode(key string, buffer []byte, T any) (any, error) {
 	if statecommon.ShouldPersistToEth(key) {
 		return this.ethCodec.Decode(key, buffer, T)
 	}
-	return this.arcoCodec.Decode(key, buffer, T)
+	return this.arcoCodec.Decode(key, buffer, T), nil
 }

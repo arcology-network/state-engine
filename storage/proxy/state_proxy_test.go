@@ -91,7 +91,7 @@ func TestStorageProxySetGetHasAndReadBackend(t *testing.T) {
 		t.Fatalf("expected cached value 77, got %v", v)
 	}
 
-	proxy.DebugClearexecStore()
+	proxy.Cache().Clear()
 
 	gotRaw, err := proxy.Get(key)
 	if err != nil {
@@ -123,7 +123,7 @@ func TestStorageProxyHasAndGetMissingKey(t *testing.T) {
 		t.Fatalf("expected nil value for missing key, got %T", v)
 	}
 
-	proxy.DebugClearexecStore()
+	proxy.Cache().Clear()
 
 	v, err = proxy.Get(key)
 	if !errors.Is(err, stgintf.ErrNotFound) {
@@ -172,7 +172,7 @@ func TestNewPebbleDBProxySetGetHasAndReadBackend(t *testing.T) {
 		t.Fatalf("expected cached value 77, got %v", v)
 	}
 
-	proxy.DebugClearexecStore()
+	proxy.Cache().Clear()
 
 	gotRaw, err := proxy.Get(key)
 	if err != nil {

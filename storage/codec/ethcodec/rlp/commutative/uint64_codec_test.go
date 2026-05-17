@@ -36,7 +36,11 @@ func TestBoundedUint64StorageCodec(t *testing.T) {
 		t.Fatal("encode error:", err)
 	}
 
-	decoded := (&Uint64RLP{}).Decode(buf).(*commutative.Uint64)
+	decodedAny, err := (&Uint64RLP{}).Decode(buf)
+	if err != nil {
+		t.Fatal("decode error:", err)
+	}
+	decoded := decodedAny.(*commutative.Uint64)
 
 	min, max := decoded.Limits()
 	if decoded.Value().(uint64) != uint64(50) ||
@@ -55,7 +59,11 @@ func TestUnboundedUint64StorageCodec(t *testing.T) {
 		t.Fatal("encode error:", err)
 	}
 
-	decoded := (&Uint64RLP{}).Decode(buf).(*commutative.Uint64)
+	decodedAny, err := (&Uint64RLP{}).Decode(buf)
+	if err != nil {
+		t.Fatal("decode error:", err)
+	}
+	decoded := decodedAny.(*commutative.Uint64)
 	if decoded.Value() != uint64(150) {
 		t.Fatal("decode mismatch")
 	}

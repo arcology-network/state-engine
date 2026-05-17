@@ -36,7 +36,7 @@ func (this *U256RLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(v.ToBig())
 }
 
-func (*U256RLP) Decode(buffer []byte) any {
+func (*U256RLP) Decode(buffer []byte) (any, error) {
 	this := commutative.NewUnboundedU256().(*commutative.U256)
 
 	var arr []any
@@ -63,5 +63,5 @@ func (*U256RLP) Decode(buffer []byte) any {
 		this.SetLimits(*min, *max)
 		this.SetValue(*v)
 	}
-	return this
+	return this, err
 }

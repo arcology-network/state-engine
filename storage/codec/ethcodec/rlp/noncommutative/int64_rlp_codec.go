@@ -31,10 +31,10 @@ func (this *Int64RLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(new(big.Int).SetInt64(int64(*this.Int64.Value().(*noncommutative.Int64))))
 }
 
-func (this *Int64RLP) Decode(buffer []byte) any {
+func (this *Int64RLP) Decode(buffer []byte) (any, error) {
 	var v big.Int
 	if err := rlp.DecodeBytes(buffer, &v); err != nil {
-		panic("Failed to decode int64")
+		return nil, err
 	}
-	return common.New(noncommutative.Int64(v.Int64()))
+	return common.New(noncommutative.Int64(v.Int64())), nil
 }

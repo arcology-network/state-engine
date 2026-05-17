@@ -36,10 +36,10 @@ func (this *BytesRLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(new(big.Int).SetBytes(raw))
 }
 
-func (this *BytesRLP) Decode(buffer []byte) any {
+func (this *BytesRLP) Decode(buffer []byte) (any, error) {
 	var out []byte
 	if err := rlp.DecodeBytes(buffer, &out); err != nil {
-		panic(err)
+		return nil, err
 	}
-	return noncommutative.NewBytes(out)
+	return noncommutative.NewBytes(out), nil
 }

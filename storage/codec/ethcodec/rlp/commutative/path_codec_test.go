@@ -37,7 +37,10 @@ func TestPath(t *testing.T) {
 		t.Error("Encoding failed:", err)
 	}
 
-	outPath := new(PathRLP).Decode(buffer)
+	outPath, err := new(PathRLP).Decode(buffer)
+	if err != nil {
+		t.Fatal("decode error:", err)
+	}
 
 	if !inPath.Equal(outPath) {
 		t.Error("Error: Don't match!!", inPath, outPath)

@@ -29,7 +29,11 @@ func TestUint32StorageCodec(t *testing.T) {
 	if err != nil {
 		t.Error("Encoding failed:", err)
 	}
-	decoded := new(Uint32RLP).Decode(encoded).(*noncommutative.Uint32)
+	decodedAny, err := new(Uint32RLP).Decode(encoded)
+	if err != nil {
+		t.Fatal("decode error:", err)
+	}
+	decoded := decodedAny.(*noncommutative.Uint32)
 
 	if !decoded.Equal(v) {
 		t.Fatal("decode mismatch")

@@ -34,9 +34,9 @@ import (
 	"strings"
 
 	common "github.com/arcology-network/common-lib/common"
-	libcommon "github.com/arcology-network/common-lib/common"
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	"github.com/arcology-network/common-lib/crdt/commutative"
+	"github.com/arcology-network/common-lib/crdt/noncommutative"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/associative"
 	mapi "github.com/arcology-network/common-lib/exp/map"
@@ -211,8 +211,13 @@ func (this *ExecutionStateStore) ExistsInParent(tx uint64, path string, do func(
 		return true
 	}
 
+	typeHint := new(commutative.Path)
 	parentPath, _ := statecommon.GetParentPath(path) // Get the parent path
-	if meta, _, _ := this.LookupOrMaterialize(tx, parentPath, new(commutative.Path), do, false); meta != nil {
+	if meta, _, _ := this.LookupOrMaterialize(tx, parentPath, typeHint, do, false); meta != nil {
+		if common.IsType[*noncommutative.Bytes](meta) {
+			meta, _ = ethrlp.RlpCodec{}.Decode("", *(meta.(*noncommutative.Bytes)), typeHint)
+		}
+
 		childKey := path[len(parentPath):]
 		if ok, _ := meta.(*commutative.Path).Exists(childKey); ok { // Add the path to the parent path
 			return ok
@@ -223,7 +228,12 @@ func (this *ExecutionStateStore) ExistsInParent(tx uint64, path string, do func(
 
 // Get the raw value directly, put it in an empty cell without recording
 // the access. `Won't` update the localCells.
-func (this *ExecutionStateStore) LookupForRead(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
+func (this *ExecutionStateStore) LookupForRead(
+	tx uint64,
+	path string,
+	T crdtcommon.CRDT,
+	do func(*statecell.StateCell),
+) (any, *statecell.StateCell, bool) {
 	// If the path doesn't exist in the parent snapshot at all (no committed
 	// value, no wildcard/container inheritance), just return an empty,
 	// non-cached cell.
@@ -320,16 +330,16 @@ func (this *ExecutionStateStore) ReadCommitted(tx uint64, path string, T crdtcom
 func (this *ExecutionStateStore) loadFromCommitted(tx uint64, path string, T any) *statecell.StateCell {
 	var typedv any
 	if committedStore := this.CommittedStore(); committedStore != nil {
-		typedv, _ = committedStore.Get(path) // The committedStore could also be another instance of ExecutionStateStore.
+		typedv, _ = committedStore.GetAs(path, T) // The committedStore could also be another instance of ExecutionStateStore.
 
 		// Some backend(eth storage) type may return a raw value instead of a CRDT,
 		// so we need to decode it before returning.
-		if typedv != nil && !libcommon.IsType[crdtcommon.CRDT](typedv) {
-			// This decode call is only used as a type-aware decode attempt against T.
-			// typedv itself is left unchanged here, so downstream code still sees the
-			// original backend payload unless another layer replaces it.
-			typedv = ethrlp.RlpCodec{}.Decode("", typedv.([]byte), T) // Decode the value if it's not a CRDT, which means it is a raw value directly from the committedStore, and we need to decode it before returning.
-		}
+		// if typedv != nil && !libcommon.IsType[crdtcommon.CRDT](typedv) {
+		// 	// This decode call is only used as a type-aware decode attempt against T.
+		// 	// typedv itself is left unchanged here, so downstream code still sees the
+		// 	// original backend payload unless another layer replaces it.
+		// 	typedv, _ = ethrlp.RlpCodec{}.Decode("", typedv.([]byte), T) // Decode the value if it's not a CRDT, which means it is a raw value directly from the committedStore, and we need to decode it before returning.
+		// }
 	}
 	return this.NewStateCell().Init(tx, path, 0, 0, 0, typedv, typedv != nil)
 }
@@ -354,8 +364,8 @@ func (this *ExecutionStateStore) Write(tx uint64, path string, newVal crdtcommon
 //
 // Use it with SPECIAL care!!!
 func (this *ExecutionStateStore) Inject(tx uint64, path string, v crdtcommon.CRDT) (*statecell.StateCell, error) {
-	_, cell, inCache := this.LookupOrMaterialize(tx, path, v, this.addToLocalCache, true) // Get a cell wrapper
-	err := cell.Set(tx, path, v, inCache, this)                                           // set the new value
+	_, cell, _ := this.LookupOrMaterialize(tx, path, v, this.addToLocalCache, true) // Get a cell wrapper
+	err := cell.Set(tx, path, v, this)                                              // set the new value
 	return cell, err
 }
 
@@ -367,12 +377,12 @@ func (this *ExecutionStateStore) write(tx uint64, path string, value crdtcommon.
 	cell := statecell.NewStateCell(tx, path, 0, 1, 0, value, nil) // Default cell wrapper
 	if this.Has(parentPath) || tx == statecommon.SYSTEM {         // The parent path exists or to inject the path directly
 		var err error
-		var inCache bool
+		// var inCache bool
 
 		// Not a special expression, just a value update.
 		if !strings.HasSuffix(path, "*") && !strings.HasSuffix(path, "[:]") {
-			_, cell, inCache = this.LookupOrMaterialize(tx, path, value, this.addToLocalCache, true) // Get a cell wrapper
-			err = cell.Set(tx, path, value, inCache, this)                                           // set the new value
+			_, cell, _ = this.LookupOrMaterialize(tx, path, value, this.addToLocalCache, true) // Get a cell wrapper
+			err = cell.Set(tx, path, value, this)                                              // set the new value
 		}
 
 		// Update the parent path meta
@@ -384,14 +394,14 @@ func (this *ExecutionStateStore) write(tx uint64, path string, value crdtcommon.
 			// the crdt domain. For a crdt container initated using the library api, its parent path always exists.
 			if this.platform.IsContainerPath(parentPath) ||
 				!this.platform.IsSysPath(parentPath) && tx != statecommon.SYSTEM {
-				_, parentMeta, inCache := this.LookupOrMaterialize(
+				_, parentMeta, _ := this.LookupOrMaterialize(
 					tx,
 					parentPath,
 					new(commutative.Path),
 					this.addToLocalCache,
 					true,
 				)
-				err = parentMeta.Set(tx, path, cell.Value(), inCache, this)
+				err = parentMeta.Set(tx, path, cell.Value(), this)
 			}
 
 			// Set Transient Status based on its parent path settings. A transient path will not be persisted after
@@ -444,6 +454,28 @@ func (this *ExecutionStateStore) Get(path string) (any, error) {
 	return typedv.(crdtcommon.CRDT).New(rawv, nil, nil, min, max), nil // Clone the value
 }
 
+func (this *ExecutionStateStore) GetAs(path string, typeHint any) (any, error) {
+	var typedHint crdtcommon.CRDT
+	if hint, ok := typeHint.(crdtcommon.CRDT); ok {
+		typedHint = hint
+	}
+
+	typedv, _, _ := this.LookupForRead(statecommon.SYSTEM, path, typedHint, nil)
+
+	if !common.IsType[crdtcommon.CRDT](typedv) ||
+		typedv.(crdtcommon.CRDT).IsDeltaApplied() {
+		return typedv, nil
+	}
+
+	if common.IsType[*commutative.Path](typedv) {
+		return typedv.(*commutative.Path).Clone(), nil
+	}
+
+	rawv, _, _ := typedv.(crdtcommon.CRDT).Get()
+	min, max := typedv.(crdtcommon.CRDT).Limits()
+	return typedv.(crdtcommon.CRDT).New(rawv, nil, nil, min, max), nil
+}
+
 func (this *ExecutionStateStore) Read(tx uint64, path string, T crdtcommon.CRDT) (any, any, uint64) {
 	_, stcell, _ := this.LookupForRead(tx, path, T, this.addToLocalCache) // Get the cell wrapper
 
@@ -465,7 +497,7 @@ func (this *ExecutionStateStore) DiffSize(tx uint64, path string, newVal crdtcom
 
 	newSize := int64(0)
 	if newVal != nil {
-		newSize = int64(newVal.(crdtcommon.CRDT).MemSize())
+		newSize = int64(newVal.MemSize())
 	}
 
 	return newSize - oldSize

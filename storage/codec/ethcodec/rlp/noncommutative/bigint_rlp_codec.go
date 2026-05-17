@@ -31,7 +31,9 @@ func (this *BigintRLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes((*big.Int)(&this.Bigint))
 }
 
-func (this *BigintRLP) Decode(buffer []byte) any {
-	rlp.DecodeBytes(buffer, (*big.Int)(&this.Bigint))
-	return this
+func (this *BigintRLP) Decode(buffer []byte) (any, error) {
+	if err := rlp.DecodeBytes(buffer, (*big.Int)(&this.Bigint)); err != nil {
+		return nil, err
+	}
+	return this, nil
 }

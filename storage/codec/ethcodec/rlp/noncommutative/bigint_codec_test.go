@@ -26,7 +26,11 @@ import (
 func TestBigintStorageCodec(t *testing.T) {
 	v := noncommutative.NewBigint(111).(*noncommutative.Bigint)
 	buffer, _ := (&BigintRLP{Bigint: *v}).Encode()
-	decoded := (&BigintRLP{}).Decode(buffer).(*BigintRLP)
+	decodedAny, err := (&BigintRLP{}).Decode(buffer)
+	if err != nil {
+		t.Fatal("decode error:", err)
+	}
+	decoded := decodedAny.(*BigintRLP)
 
 	if !decoded.Equal(v) {
 		t.Fatal("decode mismatch")

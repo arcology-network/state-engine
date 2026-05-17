@@ -29,10 +29,10 @@ func (this *StringRLP) Encode() ([]byte, error) {
 	return buffer, err
 }
 
-func (this *StringRLP) Decode(buffer []byte) any {
+func (this *StringRLP) Decode(buffer []byte) (any, error) {
 	var v noncommutative.String
 	if err := rlp.DecodeBytes(buffer, &v); err != nil {
-		panic("Failed to decode string")
+		return nil, err
 	}
-	return &v
+	return &v, nil
 }

@@ -57,6 +57,11 @@ func (this *stubReadWriteStore) Get(key string) (any, error) {
 	return this.values[key], nil
 }
 
+func (this *stubReadWriteStore) GetAs(key string, _ any) (any, error) {
+	this.getCalls++
+	return this.values[key], nil
+}
+
 // func (this *stubReadWriteStore) ReadBackend(key string, _ any) (any, error) {
 // 	return this.values[key], nil
 // }

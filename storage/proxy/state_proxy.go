@@ -164,9 +164,6 @@ func (*StorageProxy) All(tran *statecell.StateCell) bool {
 // Set the version for the storage proxy, only works for snapshot storages.
 func (this *StorageProxy) SetVersion(_ [32]byte) error { return nil }
 
-func (this *StorageProxy) DebugEnableCache()    {}
-func (this *StorageProxy) DebugDisableCache()   {}
-func (this *StorageProxy) DebugClearexecStore() { this.CachedStore.Cache().Clear() }
 
 func initLiveStorage(db commonintf.BackendStore[string, []byte]) *cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] {
 	codec := stgcodec.NewStorageCodec(

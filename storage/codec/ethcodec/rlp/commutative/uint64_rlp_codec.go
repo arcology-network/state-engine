@@ -39,7 +39,7 @@ func (this *Uint64RLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(this.Value())
 }
 
-func (*Uint64RLP) Decode(buffer []byte) any {
+func (*Uint64RLP) Decode(buffer []byte) (any, error) {
 	this := commutative.NewUnboundedUint64().(*commutative.Uint64)
 
 	arr := make([]*big.Int, 3)
@@ -58,5 +58,5 @@ func (*Uint64RLP) Decode(buffer []byte) any {
 		this = commutative.NewBoundedUint64(min, max).(*commutative.Uint64)
 		this.SetValue(arr[0].Uint64())
 	}
-	return this
+	return this, err
 }

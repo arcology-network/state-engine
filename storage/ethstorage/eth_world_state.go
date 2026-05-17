@@ -24,7 +24,9 @@ import (
 
 	"github.com/VictoriaMetrics/fastcache"
 	common "github.com/arcology-network/common-lib/common"
+	libcommon "github.com/arcology-network/common-lib/common"
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	noncommutative "github.com/arcology-network/common-lib/crdt/noncommutative"
 
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
@@ -73,7 +75,7 @@ type EthWorldState struct {
 	blockRoots map[uint64][32]byte // lookup the root hash for a block number
 
 	encoder func(string, any) ([]byte, error)
-	decoder func(string, []byte, any) any
+	decoder func(string, []byte, any) (any, error)
 }
 
 // LoadEthTrieByRoot loads the trie from the database with the root provided.
@@ -147,7 +149,7 @@ func NewLevelDBDataStore(dir string, cacheConfig *hashdb.Config) *EthWorldState 
 // If the account is not found, it creates a new account with default account state and shared cache.
 func (this *EthWorldState) Preload(addr []byte) any {
 	// AccessListCache doesn't serve any purpose for now. It is only a place holder, the parallelized trie update requires its presence.
-	acct, _ := this.GetAccount(ethcommon.BytesToAddress(addr), common.Reference(ethmpt.AccessListCache{}))
+	acct, _ := this.GetAccount(ethcommon.BytesToAddress(addr), libcommon.Reference(ethmpt.AccessListCache{}))
 	if acct == nil {
 		acct = NewAccountWithSharedCache( // Account not found, create a new account
 			ethcommon.BytesToAddress(addr),
@@ -255,6 +257,18 @@ func (this *EthWorldState) Get(path string) (any, error) {
 	return nil, err
 }
 
+func (this *EthWorldState) GetAs(path string, hint any) (any, error) {
+	data, err := this.Get(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if libcommon.IsType[*noncommutative.Bytes](data) {
+		return this.decoder(path, *(data.(*noncommutative.Bytes)), hint)
+	}
+	return data, nil
+}
+
 // Get the account from the cache first, if not found, get it from the trie.
 func (this *EthWorldState) GetAccount(address ethcommon.Address, _ *ethmpt.AccessListCache) (*Account, error) {
 	if len(address) == 0 {
@@ -282,7 +296,7 @@ func (this *EthWorldState) GetAccount(address ethcommon.Address, _ *ethmpt.Acces
 		return &Account{
 			addr:         address,
 			StateAccount: acctState,
-			code:         common.First(this.trieDB.diskShardDBs[0].Get(acctState.CodeHash)).([]byte), // code
+			code:         libcommon.First(this.trieDB.diskShardDBs[0].Get(acctState.CodeHash)).([]byte), // code
 			storageTrie:  stgTrie,
 			err:          nil,
 		}, nil
@@ -364,14 +378,14 @@ func (this *EthWorldState) TrieDB() *EthShardTrieDB     { return this.trieDB }
 func (this *EthWorldState) DiskDBs() [16]ethdb.Database { return this.trieDB.diskShardDBs }
 
 // Place holders
-func (this *EthWorldState) Root() [32]byte                                { return this.worldStateTrie.Hash() }
-func (this *EthWorldState) Encoder(any) func(string, any) ([]byte, error) { return this.encoder }
-func (this *EthWorldState) Decoder(any) func(string, []byte, any) any     { return this.decoder }
-func (this *EthWorldState) EthDB() *triedb.Database                       { return this.trieDB.mainTrieDB }
-func (this *EthWorldState) Trie() *ethmpt.Trie                            { return this.worldStateTrie }
-func (this *EthWorldState) UpdateCacheStats([]any)                        {}
-func (this *EthWorldState) Print()                                        {}
-func (this *EthWorldState) CheckSum() [32]byte                            { return [32]byte{} }
+func (this *EthWorldState) Root() [32]byte                                     { return this.worldStateTrie.Hash() }
+func (this *EthWorldState) Encoder(any) func(string, any) ([]byte, error)      { return this.encoder }
+func (this *EthWorldState) Decoder(any) func(string, []byte, any) (any, error) { return this.decoder }
+func (this *EthWorldState) EthDB() *triedb.Database                            { return this.trieDB.mainTrieDB }
+func (this *EthWorldState) Trie() *ethmpt.Trie                                 { return this.worldStateTrie }
+func (this *EthWorldState) UpdateCacheStats([]any)                             {}
+func (this *EthWorldState) Print()                                             {}
+func (this *EthWorldState) CheckSum() [32]byte                                 { return [32]byte{} }
 func (this *EthWorldState) Query(string, func(string, []byte) bool) ([]string, [][]byte, error) {
 	return nil, nil, nil
 }

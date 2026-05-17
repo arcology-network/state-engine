@@ -28,10 +28,10 @@ func (this *Uint32RLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(*this)
 	// return codec.Uint32(this.Uint32).Encode()
 }
-func (this *Uint32RLP) Decode(buffer []byte) any {
+func (this *Uint32RLP) Decode(buffer []byte) (any, error) {
 	var v Uint32RLP
 	if err := rlp.DecodeBytes(buffer, &v); err != nil {
-		panic("Failed to decode uint32")
+		return nil, err
 	}
-	return &v.Uint32
+	return &v.Uint32, nil
 }

@@ -29,10 +29,10 @@ func (this *PathRLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(this.Path.Encode())
 }
 
-func (this *PathRLP) Decode(buffer []byte) any {
+func (this *PathRLP) Decode(buffer []byte) (any, error) {
 	var decoded []byte
 	if err := rlp.DecodeBytes(buffer, &decoded); err != nil {
-		panic(err)
+		return nil, err
 	}
-	return this.Path.Decode(decoded)
+	return this.Path.Decode(decoded), nil
 }

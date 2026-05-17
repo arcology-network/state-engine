@@ -63,9 +63,9 @@ func (RlpCodec) Encode(key string, v any) ([]byte, error) {
 	}
 }
 
-func (RlpCodec) Decode(_ string, buffer []byte, T any) any {
+func (RlpCodec) Decode(_ string, buffer []byte, T any) (any, error) {
 	if T == nil {
-		return buffer
+		return buffer, nil
 	}
 
 	switch T.(type) {
