@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -29,6 +30,23 @@ type stubReadWriteStore struct {
 	getCalls   int
 	preloadArg []byte
 	version    [32]byte
+}
+
+type legacyStateCellWriter struct {
+	store *ExecutionStateStore
+}
+
+func (this legacyStateCellWriter) Read(tx uint64, path string, T crdtcommon.CRDT) (any, any, uint64) {
+	return this.store.Read(tx, path, T)
+}
+
+func (this legacyStateCellWriter) Write(tx uint64, path string, T crdtcommon.CRDT, args ...any) (int64, error) {
+	return this.store.Write(tx, path, T, args...)
+}
+
+func (this legacyStateCellWriter) ReadCell(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
+	v, cell, err := this.store.ReadCell(tx, path, T, do)
+	return v, cell, err == nil
 }
 
 var testAccount = statecommon.ETH_ACCOUNT_PREFIX + "0x" + strings.Repeat("1", 40)
@@ -127,8 +145,11 @@ func TestExecutionStateStoreLoadFromCommittedUsesCommittedStoreGet(t *testing.T)
 	backend.values["/acct/alpha"] = expected
 
 	store := NewExecutionStateStore(backend, 8, 1)
-	cell := store.loadFromCommitted(7, "/acct/alpha", noncommutative.NewString(""))
+	cell, err := store.getFromCommitted(7, "/acct/alpha", noncommutative.NewString(""))
 
+	if err != nil {
+		t.Fatalf("expected committed load to succeed: %v", err)
+	}
 	if backend.getCalls != 1 {
 		t.Fatalf("expected exactly one Get call, got %d", backend.getCalls)
 	}
@@ -277,8 +298,8 @@ func TestExecutionStateStoreWriteReadAndCacheHelpers(t *testing.T) {
 		t.Fatalf("expected diff size 0 for unchanged value, got %d", post)
 	}
 
-	missingValue, missingCell, found := store.LookupForRead(1, testPath("/missing/deep/value"), noncommutative.NewString(""), nil)
-	if found || missingValue != nil || missingCell == nil {
+	missingValue, missingCell, err := store.ReadCell(1, testPath("/missing/deep/value"), noncommutative.NewString(""), nil)
+	if !errors.Is(err, storageintf.ErrNotInParent) || missingValue != nil || missingCell == nil {
 		t.Fatal("expected missing lookup to return empty non-cached cell")
 	}
 	if _, err := store.Write(statecommon.SYSTEM, path, nil); err != nil {
@@ -310,7 +331,7 @@ func TestExecutionStateStoreWriteReadAndCacheHelpers(t *testing.T) {
 	}
 
 	errStore := NewExecutionStateStore(nil, 4, 1)
-	if cell := errStore.loadFromCommitted(1, testPath("/err"), noncommutative.NewString("")); cell == nil {
+	if cell, err := errStore.getFromCommitted(1, testPath("/err"), noncommutative.NewString("")); err != nil || cell == nil {
 		t.Fatal("expected load from committed to still return a state cell when committed store is nil")
 	}
 }
@@ -362,7 +383,8 @@ func TestExecutionStateStoreInsertExportAndResetHelpers(t *testing.T) {
 	if other.Insert(nil) != other {
 		t.Fatal("expected insert(nil) to be a no-op")
 	}
-	other.Insert([]*statecell.StateCell{cellB, cellA})
+	cellB.CopyTo(legacyStateCellWriter{store: other})
+	cellA.CopyTo(legacyStateCellWriter{store: other})
 	if !store.Equal(other) {
 		t.Fatal("expected inserted store to equal original store")
 	}
@@ -371,7 +393,7 @@ func TestExecutionStateStoreInsertExportAndResetHelpers(t *testing.T) {
 	}
 
 	pathOnly := NewExecutionStateStore(nil, 8, 1)
-	pathOnly.Insert([]*statecell.StateCell{pathCell})
+	pathCell.CopyTo(legacyStateCellWriter{store: pathOnly})
 	if _, ok := pathOnly.localCells[pathMeta]; !ok {
 		t.Fatal("expected path creation transition to be inserted into cache")
 	}
@@ -418,15 +440,15 @@ func TestExecutionStateStoreWildcardMaterializationAndParentChecks(t *testing.T)
 		Second: containerPath,
 	})
 
-	v, cell, inCache := store.LookupOrMaterialize(2, childPath, noncommutative.NewString(""), nil, true)
+	v, cell, err := store.ResolveCellForRead(2, childPath, noncommutative.NewString(""), nil, true)
 	if v != nil {
 		t.Fatal("expected wildcard materialization to return nil value (deleted)")
 	}
 	if cell == nil {
 		t.Fatal("expected wildcard materialization to return a state cell")
 	}
-	if inCache {
-		t.Fatal("expected wildcard branch to report inCache=false by contract")
+	if err != nil {
+		t.Fatalf("expected wildcard materialization to succeed: %v", err)
 	}
 	if cachedCell, ok := store.localCells[childPath]; !ok || cachedCell == nil {
 		t.Fatal("expected wildcard path to be inserted into local cache")
@@ -450,7 +472,7 @@ func TestExecutionStateStoreAdditionalBranches(t *testing.T) {
 	}
 
 	pathCell := statecell.NewStateCell(statecommon.SYSTEM, testPath("/custom/copied"), 0, 1, 0, noncommutative.NewString("copied"), nil)
-	store.set(pathCell)
+	pathCell.CopyTo(legacyStateCellWriter{store: store})
 	if got, ok := store.localCells[testPath("/custom/copied")]; !ok || got == nil {
 		t.Fatal("expected set to copy non-path state cell into cache")
 	}

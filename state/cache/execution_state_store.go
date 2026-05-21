@@ -33,7 +33,7 @@ import (
 	"sort"
 	"strings"
 
-	common "github.com/arcology-network/common-lib/common"
+	libcommon "github.com/arcology-network/common-lib/common"
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	"github.com/arcology-network/common-lib/crdt/commutative"
 	"github.com/arcology-network/common-lib/crdt/noncommutative"
@@ -42,7 +42,7 @@ import (
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	mempool "github.com/arcology-network/common-lib/exp/mempool"
 	slice "github.com/arcology-network/common-lib/exp/slice"
-	storageintf "github.com/arcology-network/common-lib/storage/interface"
+	stgintf "github.com/arcology-network/common-lib/storage/interface"
 	statecommon "github.com/arcology-network/state-engine/common"
 	ethrlp "github.com/arcology-network/state-engine/storage/codec/ethcodec/rlp"
 	"github.com/arcology-network/state-engine/storage/proxy"
@@ -74,7 +74,7 @@ type ExecutionStateStore struct {
 	// committedStore is the read-only storage interface for accessing *committed*
 	// global state (MPT / flattened DB). Reads fall back to committedStore when
 	// a path is not found locally. committedStore must never be mutated here.
-	committedStore storageintf.ReadOnlyStore[string, crdtcommon.CRDT]
+	committedStore stgintf.ReadOnlyStore[string, crdtcommon.CRDT]
 
 	// localCells stores lazily-materialized StateCells for the current
 	// execution. A cell is added when:
@@ -133,7 +133,7 @@ type ExecutionStateStore struct {
 // It supports lazy materialization, wildcard delete inheritance,
 // and correct conflict detection.
 func NewExecutionStateStore(
-	committedStore storageintf.ReadOnlyStore[string, crdtcommon.CRDT],
+	committedStore stgintf.ReadOnlyStore[string, crdtcommon.CRDT],
 	perPage int,
 	numPages int,
 	args ...any,
@@ -162,7 +162,7 @@ func NewDefaultExecutionStateStore(backend proxy.VersionedStore) *ExecutionState
 	)
 }
 
-func (this *ExecutionStateStore) SetCommittedStore(backend storageintf.ReadOnlyStore[string, crdtcommon.CRDT]) *ExecutionStateStore {
+func (this *ExecutionStateStore) SetCommittedStore(backend stgintf.ReadOnlyStore[string, crdtcommon.CRDT]) *ExecutionStateStore {
 	this.committedStore = backend
 	return this
 }
@@ -177,7 +177,7 @@ func (this *ExecutionStateStore) addToLocalCache(v *statecell.StateCell) {
 	this.localCells[*v.GetPath()] = v
 }
 
-func (this *ExecutionStateStore) CommittedStore() storageintf.ReadOnlyStore[string, crdtcommon.CRDT] {
+func (this *ExecutionStateStore) CommittedStore() stgintf.ReadOnlyStore[string, crdtcommon.CRDT] {
 	return this.committedStore
 }
 
@@ -213,8 +213,8 @@ func (this *ExecutionStateStore) ExistsInParent(tx uint64, path string, do func(
 
 	typeHint := new(commutative.Path)
 	parentPath, _ := statecommon.GetParentPath(path) // Get the parent path
-	if meta, _, _ := this.LookupOrMaterialize(tx, parentPath, typeHint, do, false); meta != nil {
-		if common.IsType[*noncommutative.Bytes](meta) {
+	if meta, _, _ := this.ResolveCellForRead(tx, parentPath, typeHint, do, true); meta != nil {
+		if libcommon.IsType[*noncommutative.Bytes](meta) {
 			meta, _ = ethrlp.RlpCodec{}.Decode("", *(meta.(*noncommutative.Bytes)), typeHint)
 		}
 
@@ -228,24 +228,24 @@ func (this *ExecutionStateStore) ExistsInParent(tx uint64, path string, do func(
 
 // Get the raw value directly, put it in an empty cell without recording
 // the access. `Won't` update the localCells.
-func (this *ExecutionStateStore) LookupForRead(
+func (this *ExecutionStateStore) ReadCell(
 	tx uint64,
 	path string,
 	T crdtcommon.CRDT,
 	do func(*statecell.StateCell),
-) (any, *statecell.StateCell, bool) {
+) (any, *statecell.StateCell, error) {
 	// If the path doesn't exist in the parent snapshot at all (no committed
 	// value, no wildcard/container inheritance), just return an empty,
 	// non-cached cell.
 	if !this.ExistsInParent(tx, path, do) {
-		return nil, this.NewStateCell().Init(tx, path, 0, 0, 0, nil, false), false
+		return nil, this.NewStateCell().Init(tx, path, 0, 0, 0, nil, false), stgintf.ErrNotInParent
 	}
 
 	// For existing paths (including those affected by wildcard/container
 	// semantics), reuse the full resolution pipeline. This may materialize
 	// a StateCell into localCells, but the caller is still "read-only" from
 	// a semantics point of view.
-	return this.LookupOrMaterialize(tx, path, T, do, true) // Find the value in the cache
+	return this.ResolveCellForRead(tx, path, T, do, true) // Find the value in the cache
 }
 
 // FindForWrite resolves the StateCell for `path` through a 3-step lookup:
@@ -256,19 +256,15 @@ func (this *ExecutionStateStore) LookupForRead(
 //
 // It may insert a new StateCell into localCells when a wildcard/container
 // delete implies a *logical* deleted state for this path.
-func (this *ExecutionStateStore) LookupOrMaterialize(
+func (this *ExecutionStateStore) ResolveCellForRead(
 	tx uint64,
 	path string,
-	T crdtcommon.CRDT,
+	T any,
 	do func(*statecell.StateCell),
 	cached bool,
-) (any, *statecell.StateCell, bool) {
-	// if tx == 0 {
-	// 	fmt.Println("Tx:", tx, "Path:", path)
-	// }
-
+) (any, *statecell.StateCell, error) {
 	if cell, ok := this.localCells[path]; ok {
-		return cell.Value(), cell, true // From cache
+		return cell.Value(), cell, nil // From cache
 	}
 
 	//  This is a LAZY materialization step, mainly for performance.
@@ -295,30 +291,34 @@ func (this *ExecutionStateStore) LookupOrMaterialize(
 	//
 	// This prevents duplicated work across parallel executors, keeps state expansion
 	// deterministic, and avoids saturating the conflict-detection and storage engine.
-	if ok, cell := this.ResolveWildcardDeletion(path, T); ok && cached {
-		this.localCells[path] = cell // Add to the cache because should have logically been there already.
-		return cell.Value(), cell, false
+	if ok, cell, err := this.ResolveWildcardDeletion(path, T); ok && cached {
+		this.localCells[path] = cell   // Add to the cache because should have logically been there already.
+		return cell.Value(), cell, err // From wildcard delete, not found in the committed store
 	}
 
 	// Fallback: load from the committed store.
-	cell := this.loadFromCommitted(tx, path, T)
+	cell, err := this.getFromCommitted(tx, path, T)
 	if do != nil {
 		do(cell) // Call the callback function if provided
 	}
-	return cell.Value(), cell, false
+	return cell.Value(), cell, err
 }
 
 // Read the value from the committedStore. This function is used for
 // GetCommittedState() in Eth interface for gas refund related code.
-func (this *ExecutionStateStore) ReadCommitted(tx uint64, path string, T crdtcommon.CRDT) (any, uint64) {
+func (this *ExecutionStateStore) ReadCommitted(tx uint64, path string, T any) (any, uint64) {
 	// Just to leave a record for conflict detection. This is different from the original Ethereum implementation.
 	// In Ethereum, there is no such concept as the multiprocessor，so the isCommitted state can only come from the
 	// previous block or the transactions before the current one. But in the multiprocessor, the isCommitted state
 	// may also come from the parent thread. So we need to leave a record for the conflict detection in case that
 	// threads spawned by multiple parent are trying to access the same path.
-	stcell := this.loadFromCommitted(tx, path, T) // Check to see if the path exists in the committedStore.
-
 	dataSize := statecommon.MIN_READ_SIZE
+
+	stcell, err := this.getFromCommitted(tx, path, T) // Check to see if the path exists in the committedStore.
+	if err != nil {
+		return nil, dataSize
+	}
+
 	if typedv := stcell.Value(); typedv != nil {
 		dataSize += typedv.(crdtcommon.CRDT).MemSize()
 	}
@@ -327,21 +327,13 @@ func (this *ExecutionStateStore) ReadCommitted(tx uint64, path string, T crdtcom
 
 // The load the data from the committedStore. Since the state is already isCommitted, it is read-only.
 // No need to add it to the localCells or keep track of the access.
-func (this *ExecutionStateStore) loadFromCommitted(tx uint64, path string, T any) *statecell.StateCell {
+func (this *ExecutionStateStore) getFromCommitted(tx uint64, path string, T any) (*statecell.StateCell, error) {
 	var typedv any
+	var err error
 	if committedStore := this.CommittedStore(); committedStore != nil {
-		typedv, _ = committedStore.GetAs(path, T) // The committedStore could also be another instance of ExecutionStateStore.
-
-		// Some backend(eth storage) type may return a raw value instead of a CRDT,
-		// so we need to decode it before returning.
-		// if typedv != nil && !libcommon.IsType[crdtcommon.CRDT](typedv) {
-		// 	// This decode call is only used as a type-aware decode attempt against T.
-		// 	// typedv itself is left unchanged here, so downstream code still sees the
-		// 	// original backend payload unless another layer replaces it.
-		// 	typedv, _ = ethrlp.RlpCodec{}.Decode("", typedv.([]byte), T) // Decode the value if it's not a CRDT, which means it is a raw value directly from the committedStore, and we need to decode it before returning.
-		// }
+		typedv, err = this.CommittedStore().GetAs(path, T)
 	}
-	return this.NewStateCell().Init(tx, path, 0, 0, 0, typedv, typedv != nil)
+	return this.NewStateCell().Init(tx, path, 0, 0, 0, typedv, typedv != nil), err
 }
 
 // Write applies newVal to path, tracks size delta, and invokes optional callback.
@@ -364,8 +356,8 @@ func (this *ExecutionStateStore) Write(tx uint64, path string, newVal crdtcommon
 //
 // Use it with SPECIAL care!!!
 func (this *ExecutionStateStore) Inject(tx uint64, path string, v crdtcommon.CRDT) (*statecell.StateCell, error) {
-	_, cell, _ := this.LookupOrMaterialize(tx, path, v, this.addToLocalCache, true) // Get a cell wrapper
-	err := cell.Set(tx, path, v, this)                                              // set the new value
+	_, cell, _ := this.ResolveCellForRead(tx, path, v, this.addToLocalCache, true) // Get a cell wrapper
+	err := cell.Set(tx, path, v, this)                                             // set the new value
 	return cell, err
 }
 
@@ -381,8 +373,8 @@ func (this *ExecutionStateStore) write(tx uint64, path string, value crdtcommon.
 
 		// Not a special expression, just a value update.
 		if !strings.HasSuffix(path, "*") && !strings.HasSuffix(path, "[:]") {
-			_, cell, _ = this.LookupOrMaterialize(tx, path, value, this.addToLocalCache, true) // Get a cell wrapper
-			err = cell.Set(tx, path, value, this)                                              // set the new value
+			_, cell, _ = this.ResolveCellForRead(tx, path, value, this.addToLocalCache, true) // Get a cell wrapper
+			err = cell.Set(tx, path, value, this)                                             // set the new value
 		}
 
 		// Update the parent path meta
@@ -394,7 +386,7 @@ func (this *ExecutionStateStore) write(tx uint64, path string, value crdtcommon.
 			// the crdt domain. For a crdt container initated using the library api, its parent path always exists.
 			if this.platform.IsContainerPath(parentPath) ||
 				!this.platform.IsSysPath(parentPath) && tx != statecommon.SYSTEM {
-				_, parentMeta, _ := this.LookupOrMaterialize(
+				_, parentMeta, _ := this.ResolveCellForRead(
 					tx,
 					parentPath,
 					new(commutative.Path),
@@ -408,12 +400,15 @@ func (this *ExecutionStateStore) write(tx uint64, path string, value crdtcommon.
 			// the a generation or a block is committed. This makes it different from either a normal state updates or
 			// a memory variable.
 			if this.platform.IsContainerPath(parentPath) { // Only applies to the container paths.
-				if pathMeta, _, _ := this.LookupForRead(
+				var pathMeta any
+				pathMeta, _, err = this.ReadCell(
 					tx,
 					parentPath,
 					new(commutative.Path),
 					nil,
-				); pathMeta != nil { // Get the parent path meta
+				)
+
+				if pathMeta != nil { // Get the parent path meta
 					// Use the parent path transient status to set the current path.
 					// A block bound path will only live in the current block.
 					// Nothing beyond the block can see it. So it is a special type of TRANSIENT path.
@@ -431,9 +426,9 @@ func (this *ExecutionStateStore) write(tx uint64, path string, value crdtcommon.
 func (this *ExecutionStateStore) Get(path string) (any, error) {
 	// The data backend may return a raw value instead of a CRDT. This is a normal
 	// Behavior for the eth storage.
-	typedv, _, _ := this.LookupForRead(statecommon.SYSTEM, path, nil, nil)
+	typedv, _, _ := this.ReadCell(statecommon.SYSTEM, path, nil, nil)
 
-	if !common.IsType[crdtcommon.CRDT](typedv) || // can be a nil, or a raw []byte depending on the backend type.
+	if !libcommon.IsType[crdtcommon.CRDT](typedv) || // can be a nil, or a raw []byte depending on the backend type.
 		typedv.(crdtcommon.CRDT).IsDeltaApplied() {
 		return typedv, nil
 	}
@@ -444,7 +439,7 @@ func (this *ExecutionStateStore) Get(path string) (any, error) {
 	// to the commutative.Path, which has its own change tracking mechanism.
 	// The clone() here isn't going to clone everything inside the Path, but just
 	// the delta part. The committed part is still shared to save memory.
-	if common.IsType[*commutative.Path](typedv) {
+	if libcommon.IsType[*commutative.Path](typedv) {
 		return typedv.(*commutative.Path).Clone(), nil
 	}
 
@@ -460,14 +455,14 @@ func (this *ExecutionStateStore) GetAs(path string, typeHint any) (any, error) {
 		typedHint = hint
 	}
 
-	typedv, _, _ := this.LookupForRead(statecommon.SYSTEM, path, typedHint, nil)
+	typedv, _, _ := this.ReadCell(statecommon.SYSTEM, path, typedHint, nil)
 
-	if !common.IsType[crdtcommon.CRDT](typedv) ||
+	if !libcommon.IsType[crdtcommon.CRDT](typedv) ||
 		typedv.(crdtcommon.CRDT).IsDeltaApplied() {
 		return typedv, nil
 	}
 
-	if common.IsType[*commutative.Path](typedv) {
+	if libcommon.IsType[*commutative.Path](typedv) {
 		return typedv.(*commutative.Path).Clone(), nil
 	}
 
@@ -477,7 +472,7 @@ func (this *ExecutionStateStore) GetAs(path string, typeHint any) (any, error) {
 }
 
 func (this *ExecutionStateStore) Read(tx uint64, path string, T crdtcommon.CRDT) (any, any, uint64) {
-	_, stcell, _ := this.LookupForRead(tx, path, T, this.addToLocalCache) // Get the cell wrapper
+	_, stcell, _ := this.ReadCell(tx, path, T, this.addToLocalCache) // Get the cell wrapper
 
 	// need to check if it is in the memory. If so gas price should be 3 instead.
 	dataSize := statecommon.MIN_READ_SIZE
@@ -491,7 +486,7 @@ func (this *ExecutionStateStore) Read(tx uint64, path string, T crdtcommon.CRDT)
 // This is used for tracking memory usage changes in the ExecutionStateStore and calculating fees.
 func (this *ExecutionStateStore) DiffSize(tx uint64, path string, newVal crdtcommon.CRDT) int64 {
 	oldSize := int64(0)
-	if oldVal, _, _ := this.LookupForRead(tx, path, newVal, nil); oldVal != nil {
+	if oldVal, _, _ := this.ReadCell(tx, path, newVal, nil); oldVal != nil {
 		oldSize += int64(oldVal.(crdtcommon.CRDT).MemSize())
 	}
 
@@ -536,7 +531,7 @@ func (this *ExecutionStateStore) set(v *statecell.StateCell) *ExecutionStateStor
 		return this
 	}
 
-	if common.IsPath(*v.GetPath()) && v.IsCommitted() {
+	if libcommon.IsPath(*v.GetPath()) && v.IsCommitted() {
 		return this
 	}
 
@@ -553,7 +548,7 @@ func (this *ExecutionStateStore) Insert(transitions []*statecell.StateCell) *Exe
 
 	// Filter out the path creations transitions as they will be treated differently.
 	newPathCreations := slice.MoveIf(&transitions, func(_ int, v *statecell.StateCell) bool {
-		return common.IsPath(*v.GetPath()) && !v.IsCommitted()
+		return libcommon.IsPath(*v.GetPath()) && !v.IsCommitted()
 	})
 
 	// Not necessary to sort the path creations at the moment,
@@ -567,7 +562,7 @@ func (this *ExecutionStateStore) Insert(transitions []*statecell.StateCell) *Exe
 	// when inserting or deleting sub elements. This is just simpler and more straightforward
 	// than to keep track of the meta changes and merge them back the meta changes.
 	transitions = slice.RemoveIf(&transitions, func(_ int, v *statecell.StateCell) bool {
-		return common.IsPath(*v.GetPath())
+		return libcommon.IsPath(*v.GetPath())
 	})
 
 	// Write back to the parent writecache
@@ -603,7 +598,7 @@ func (this *ExecutionStateStore) Equal(other *ExecutionStateStore) bool {
 func (this *ExecutionStateStore) Export(preprocs ...func([]*statecell.StateCell) []*statecell.StateCell) []*statecell.StateCell {
 	buffer := mapi.Values(this.localCells)
 	for _, proc := range preprocs {
-		buffer = common.IfThenDo1st(proc != nil, func() []*statecell.StateCell {
+		buffer = libcommon.IfThenDo1st(proc != nil, func() []*statecell.StateCell {
 			return proc(buffer)
 		}, buffer)
 	}
@@ -635,8 +630,8 @@ func (this *ExecutionStateStore) KVs() ([]string, []crdtcommon.CRDT) {
 	return keys, values
 }
 
-func (this *ExecutionStateStore) GetWriters() []storageintf.StoreWriter[*statecell.StateCell] {
-	selfWriter := []storageintf.StoreWriter[*statecell.StateCell]{
+func (this *ExecutionStateStore) GetWriters() []stgintf.StoreWriter[*statecell.StateCell] {
+	selfWriter := []stgintf.StoreWriter[*statecell.StateCell]{
 		&ExecutionCacheWriter{
 			ExecutionCacheIndexer: NewExecutionCacheIndexer(nil, int64(this.stateVersion), nil),
 			ExecutionStateStore:   this,

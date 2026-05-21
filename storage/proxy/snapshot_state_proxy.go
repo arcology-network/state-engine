@@ -35,7 +35,7 @@ func NewEthStateSnapshot(rootHash [32]byte, trieDB *ethstg.EthShardTrieDB) (*Eth
 		return nil, err
 	}
 
-	return &EthStateSnapshot{
+	return &EthStateSnapshot{	
 		EthWorldState: ethWorldState,
 	}, nil
 }

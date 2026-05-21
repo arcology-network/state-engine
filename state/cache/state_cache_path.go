@@ -82,7 +82,7 @@ func (this *ExecutionStateStore) KeyAt(tx uint64, path string, index any, T crdt
 
 // Peek the value under a path. The difference between Peek and Read is that Peek does not have access metadata attached.
 func (this *ExecutionStateStore) Peek(path string, T crdtcommon.CRDT) (any, any, uint64) {
-	if v, _, _ := this.LookupForRead(stgcommon.SYSTEM, path, T, nil); v != nil {
+	if v, _, _ := this.ReadCell(stgcommon.SYSTEM, path, T, nil); v != nil {
 		originalV, _, _ := v.(crdtcommon.CRDT).Get()
 		return originalV, v, v.(crdtcommon.CRDT).MemSize()
 	}
@@ -97,7 +97,7 @@ func (this *ExecutionStateStore) PeekCommitted(path string, T crdtcommon.CRDT) (
 
 // This function looks up the value and carries out the operation on the value directly.
 func (this *ExecutionStateStore) DoReadOnly(tx uint64, path string, doer any, T crdtcommon.CRDT) (any, error) {
-	_, statecell, _ := this.LookupForRead(tx, path, T, this.addToLocalCache) // Only if the doer is an read only operation, the value will be added to the cache.
+	_, statecell, _ := this.ReadCell(tx, path, T, this.addToLocalCache) // Only if the doer is an read only operation, the value will be added to the cache.
 	return statecell.Do(tx, path, doer), nil
 }
 

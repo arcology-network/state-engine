@@ -26,7 +26,6 @@ import (
 	common "github.com/arcology-network/common-lib/common"
 	libcommon "github.com/arcology-network/common-lib/common"
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
-	noncommutative "github.com/arcology-network/common-lib/crdt/noncommutative"
 
 	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
@@ -263,8 +262,12 @@ func (this *EthWorldState) GetAs(path string, hint any) (any, error) {
 		return nil, err
 	}
 
-	if libcommon.IsType[*noncommutative.Bytes](data) {
-		return this.decoder(path, *(data.(*noncommutative.Bytes)), hint)
+	if libcommon.IsType[crdtcommon.CRDT](data) {
+		return data, nil
+	}
+
+	if buffer, ok := data.([]byte); ok && hint != nil {
+		return this.decoder(path, buffer, hint)
 	}
 	return data, nil
 }

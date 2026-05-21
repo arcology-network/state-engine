@@ -38,13 +38,14 @@ func (this *ExecutionCacheWriter) Precommit(_ bool) error {
 	for i := range this.ExecutionCacheIndexer.buffer {
 		this.ExecutionStateStore.localCells[*this.ExecutionCacheIndexer.buffer[i].GetPath()] = this.ExecutionCacheIndexer.buffer[i]
 	}
-	this.ExecutionCacheIndexer = NewExecutionCacheIndexer(nil, -1, nil)
 	return nil
 }
 
 // The generation cache is transient and will clear itself when all the transitions are isCommitted to
 // the database.
-func (this *ExecutionCacheWriter) Commit(_ uint64) error {
+func (this *ExecutionCacheWriter) Commit(version uint64) error {
+	this.ExecutionCacheIndexer = NewExecutionCacheIndexer(nil, int64(version), nil)
+
 	this.ExecutionStateStore.Clear()
 	this.ExecutionCacheIndexer.buffer = this.ExecutionCacheIndexer.buffer[:0]
 	return nil

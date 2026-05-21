@@ -20,13 +20,12 @@ package cache
 import (
 	"bytes"
 
-	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 )
 
 // PreloadMatched preloads the paths that match the wildcard delete path that are about to be deleted by the
 // the current write operation.
-func (this *ExecutionStateStore) ResolveWildcardDeletion(path string, T crdtcommon.CRDT) (bool, *statecell.StateCell) {
+func (this *ExecutionStateStore) ResolveWildcardDeletion(path string, T any) (bool, *statecell.StateCell, error) {
 	// Delete only for now.
 	for _, wildcardPath := range this.pendingWildcardDeletes {
 		if len(path) < len(wildcardPath.Second) {
@@ -34,13 +33,13 @@ func (this *ExecutionStateStore) ResolveWildcardDeletion(path string, T crdtcomm
 		}
 
 		if bytes.Equal([]byte(path[:len(wildcardPath.Second)]), []byte(wildcardPath.Second)) {
-			cell := this.loadFromCommitted(0, path, T) // Preload the path from the backend
-			cell.SetValue(nil)                         // To indicate t the path has been deleted by the wildcard
+			cell, err := this.getFromCommitted(0, path, T) // Preload the path from the backend
+			cell.SetValue(nil)                             // To indicate t the path has been deleted by the wildcard
 			cell.IncrementWrites(1)
-			return true, cell
+			return true, cell, err
 		}
 	}
-	return false, nil
+	return false, nil, nil
 }
 
 // WildcardsToUnivalue converts wildcard paths to StateCell for exporting.

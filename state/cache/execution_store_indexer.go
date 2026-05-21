@@ -39,6 +39,10 @@ func NewExecutionCacheIndexer(store storageintf.ReadOnlyStore[string, crdtcommon
 	}
 }
 
+func (this *ExecutionCacheIndexer) SetVersion(version int64) {
+	this.version = version
+}	
+
 // An index by account address, transitions have the same Eth account address will be put together in a list
 // This is for ETH storage, concurrent container related sub-paths won't be put into this index.
 func (this *ExecutionCacheIndexer) Import(transitions []*statecell.StateCell) {
