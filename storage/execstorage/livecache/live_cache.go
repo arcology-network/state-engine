@@ -25,7 +25,7 @@ import (
 
 func NewLiveCache(
 	cacheCap uint64,
-	backend interfaces.BackendStore[string, []byte],
+	backend interfaces.ReadWriteStore[string, []byte],
 	codec *stgcodec.StorageCodec[string, crdtcommon.CRDT, string, []byte],
 ) *cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] {
 	store := cachedstore.NewCachedStore(

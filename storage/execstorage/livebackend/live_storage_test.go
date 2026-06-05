@@ -37,7 +37,7 @@ var (
 	TEST_ROOT_PATH = path.Join(os.TempDir(), "/filedb/")
 )
 
-func newTestStore(db commonintf.BackendStore[string, []byte]) *cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] {
+func newTestStore(db commonintf.ReadWriteStore[string, []byte]) *cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] {
 	codec := stgcodec.NewStorageCodec(
 		func(key string, value crdtcommon.CRDT) (string, []byte, error) {
 			encoded, err := arcocodec.Codec{}.Encode(key, value)

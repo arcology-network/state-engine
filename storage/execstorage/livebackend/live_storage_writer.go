@@ -32,14 +32,14 @@ type LiveStorageWriter[V0, V1 any] struct {
 	*LiveStgIndexer[V0, V1]
 	buffer []*LiveStgIndexer[V0, V1]
 
-	store commonintf.BackendStore[string, V1]
+	store commonintf.ReadWriteStore[string, V1]
 	// store   *LiveStorage[V0, V1]
 	version int64
 	filter  func(*statecell.StateCell) bool
 }
 
 func NewLiveStorageWriter[V0, V1 any](
-	store commonintf.BackendStore[string, V1],
+	store commonintf.ReadWriteStore[string, V1],
 	version int64,
 	filter func(*statecell.StateCell) bool,
 	codec *stgcodec.StorageCodec[string, V0, string, V1],

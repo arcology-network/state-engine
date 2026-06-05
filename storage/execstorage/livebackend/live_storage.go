@@ -25,7 +25,7 @@ import (
 
 func NewLiveStorage[V0, V1 any](
 	sizeOf func(V0) uint64,
-	db commonintf.BackendStore[string, V1],
+	db commonintf.ReadWriteStore[string, V1],
 	codec *stgcodec.StorageCodec[string, V0, string, V1],
 ) *cachedstore.CachedStore[string, V0, string, V1] {
 	return cachedstore.NewCachedStore(

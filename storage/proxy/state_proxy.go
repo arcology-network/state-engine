@@ -165,7 +165,7 @@ func (*StorageProxy) All(tran *statecell.StateCell) bool {
 func (this *StorageProxy) SetVersion(_ [32]byte) error { return nil }
 
 
-func initLiveStorage(db commonintf.BackendStore[string, []byte]) *cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] {
+func initLiveStorage(db commonintf.ReadWriteStore[string, []byte]) *cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] {
 	codec := stgcodec.NewStorageCodec(
 		func(key string, value crdtcommon.CRDT) (string, []byte, error) {
 			if value != nil {
@@ -195,7 +195,7 @@ func initLiveStorage(db commonintf.BackendStore[string, []byte]) *cachedstore.Ca
 	)
 }
 
-func initByteLiveStorage(db commonintf.BackendStore[string, []byte]) *cachedstore.CachedStore[string, []byte, string, []byte] {
+func initByteLiveStorage(db commonintf.ReadWriteStore[string, []byte]) *cachedstore.CachedStore[string, []byte, string, []byte] {
 	codec := stgcodec.NewStorageCodec(
 		func(key string, value []byte) (string, []byte, error) { return key, value, nil },
 		func(key string, value []byte) (string, []byte, error) { return key, value, nil },
