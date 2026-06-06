@@ -21,7 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 
 	"github.com/arcology-network/common-lib/exp/slice"
-	ethstg "github.com/arcology-network/storage-committer/storage/ethstorage"
+	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 )
 

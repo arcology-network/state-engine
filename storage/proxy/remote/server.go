@@ -21,17 +21,18 @@ import (
 	"fmt"
 	"net/http"
 
-	datastore "github.com/arcology-network/storage-committer/storage/livestorage"
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
+	stgintf "github.com/arcology-network/common-lib/storage/interface"
 )
 
 type ReadonlyServer struct {
 	addr      string
-	dataStore *datastore.LiveStorage
+	dataStore stgintf.ReadOnlyStore[string, crdtcommon.CRDT]
 	encoder   func(interface{}) []byte
 	decoder   func([]byte) (interface{}, error)
 }
 
-func NewReadonlyServer(addr string, encoder func(interface{}) []byte, decoder func([]byte) (interface{}, error), dataStore *datastore.LiveStorage) *ReadonlyServer {
+func NewReadonlyServer(addr string, encoder func(interface{}) []byte, decoder func([]byte) (interface{}, error), dataStore stgintf.ReadOnlyStore[string, crdtcommon.CRDT]) *ReadonlyServer {
 	return &ReadonlyServer{
 		addr:      addr,
 		dataStore: dataStore,
@@ -41,7 +42,7 @@ func NewReadonlyServer(addr string, encoder func(interface{}) []byte, decoder fu
 }
 
 func (this *ReadonlyServer) Get(path string) ([]byte, error) {
-	val, err := this.dataStore.Retrive(path, nil)
+	val, err := this.dataStore.Get(path)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -49,12 +50,12 @@ func (this *ReadonlyServer) Get(path string) ([]byte, error) {
 }
 
 // Get fromt the server connected
-func (this *ReadonlyServer) BatchGet(paths []string) ([][]byte, error) {
+func (this *ReadonlyServer) GetBatch(paths []string) ([][]byte, error) {
 	bytes := make([][]byte, len(paths))
 	for i, v := range paths {
-		val, err := this.dataStore.Retrive(v, nil)
+		val, err := this.dataStore.Get(v)
 		if err != nil {
-			fmt.Printf("ReadonlyServer BatchGet err: %v k: %v\n", err, v)
+			fmt.Printf("ReadonlyServer GetBatch err: %v k: %v\n", err, v)
 			continue
 		}
 		bytes[i] = this.encoder(val)
@@ -67,8 +68,10 @@ func (this *ReadonlyServer) Receive(writer http.ResponseWriter, request *http.Re
 	case "GET":
 		if err := request.ParseForm(); err == nil {
 			key := request.FormValue("key")
-			if v, _ := this.dataStore.Retrive(key, nil); v != nil {
-				writer.Write(this.encoder(v))
+			if v, _ := this.dataStore.Get(key); v != nil {
+				if _, err := writer.Write(this.encoder(v)); err != nil {
+					fmt.Printf("ReadonlyServer Receive err: %v k: %v\n", err, key)
+				}
 			}
 		}
 	}

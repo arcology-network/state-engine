@@ -1,0 +1,54 @@
+/*
+*   Copyright (c) 2026 Arcology Network
+
+*   This program is free software: you can redistribute it and/or modify
+*   it under the terms of the GNU General Public License as published by
+*   the Free Software Foundation, either version 3 of the License, or
+*   (at your option) any later version.
+
+*   This program is distributed in the hope that it will be useful,
+*   but WITHOUT ANY WARRANTY; without even the implied warranty of
+*   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+*   GNU General Public License for more details.
+
+*   You should have received a copy of the GNU General Public License
+*   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package proxy
+
+import (
+	statecell "github.com/arcology-network/common-lib/crdt/statecell"
+	storageintf "github.com/arcology-network/common-lib/storage/interface"
+	"github.com/arcology-network/state-engine/storage/ethstorage"
+	ethstg "github.com/arcology-network/state-engine/storage/ethstorage"
+)
+
+// EthStateSnapshot represents a specific version of the Ethereum world state at a given block.
+// It is mainly used for historical state queries and transaction execution.
+type EthStateSnapshot struct {
+	*ethstg.EthWorldState
+}
+
+func NewEthStateSnapshot(rootHash [32]byte, trieDB *ethstg.EthShardTrieDB) (*EthStateSnapshot, error) {
+	ethWorldState, err := ethstg.LoadEthTrieByRoot(trieDB.MainTrieDB(), rootHash)
+	if err != nil {
+		return nil, err
+	}
+
+	return &EthStateSnapshot{	
+		EthWorldState: ethWorldState,
+	}, nil
+}
+
+func (this *EthStateSnapshot) GetWriters() []storageintf.StoreWriter[*statecell.StateCell] {
+	return []storageintf.StoreWriter[*statecell.StateCell]{
+		ethstorage.NewEthStorageWriter(this.EthWorldState, -1, (&StorageProxy{}).NonTransientOnly),
+	}
+}
+
+func (this *EthStateSnapshot) SetVersion(version [32]byte) error {
+	var err error
+	this.EthWorldState, err =
+		ethstorage.LoadEthTrieByRoot(this.EthWorldState.EthDB(), version)
+	return err
+}

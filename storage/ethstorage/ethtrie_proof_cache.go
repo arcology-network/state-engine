@@ -20,7 +20,7 @@ package ethstorage
 import (
 	"sync"
 
-	"github.com/arcology-network/common-lib/common"
+	mapi "github.com/arcology-network/common-lib/exp/map"
 	"github.com/arcology-network/common-lib/exp/slice"
 	tridb "github.com/ethereum/go-ethereum/triedb"
 	// ethapi "github.com/ethereum/go-ethereum/internal/ethapi"
@@ -53,7 +53,7 @@ func (this *MerkleProofCache) GetProofProvider(rootHash [32]byte) (*ProofProvide
 
 	merkle, _ := this.merkleDict[rootHash]
 	if merkle == nil {
-		datastore, err := LoadEthDataStore(this.db, rootHash)
+		datastore, err := LoadEthTrieByRoot(this.db, rootHash)
 		if err != nil {
 			return nil, err
 		}
@@ -64,7 +64,7 @@ func (this *MerkleProofCache) GetProofProvider(rootHash [32]byte) (*ProofProvide
 
 		// Check if the cache is full. Clean up the cache if it is full.
 		if len(this.merkleDict) > this.maxCached {
-			keys, merkles := common.MapKVs(this.merkleDict)
+			keys, merkles := mapi.KVs(this.merkleDict)
 
 			// The visit ratio is the number of times a merkle tree has been accessed divided by the total number of times all the merkle trees have been accessed.
 			ratios := slice.Transform(merkles, func(_ int, v *ProofProvider) float64 { return float64(v.visits) / float64(v.totalVisits) })
@@ -76,6 +76,6 @@ func (this *MerkleProofCache) GetProofProvider(rootHash [32]byte) (*ProofProvide
 	}
 
 	// Increment the number of visits for all the merkle trees by 1.
-	common.MapForeach(this.merkleDict, func(_ [32]byte, v **ProofProvider) { (**v).totalVisits++ })
+	mapi.Foreach(this.merkleDict, func(_ [32]byte, v **ProofProvider) { (**v).totalVisits++ })
 	return merkle, nil //Merkle.GetProof(acctStr, storageKeys)
 }

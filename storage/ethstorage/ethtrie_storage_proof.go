@@ -34,12 +34,12 @@ type ProofProvider struct {
 	root        [32]byte
 	totalVisits uint64 // Total number of times all the merkle trees have been accessed since this Merkle tree is created.
 	visits      int    // Number of times this merkle Merkle has been accessed.
-	DataStore   *EthDataStore
+	DataStore   *EthWorldState
 	Ethdb       *tridb.Database
 }
 
 func NewProofProvider(ethdb *tridb.Database, root [32]byte) (*ProofProvider, error) {
-	store, err := LoadEthDataStore(ethdb, root)
+	store, err := LoadEthTrieByRoot(ethdb, root)
 	if err != nil {
 		return nil, err
 	}
@@ -62,12 +62,13 @@ func (this *ProofProvider) GetProof(acctAddr ethcommon.Address, storageKeys []st
 
 	// Get the account either from the cache or from the database.
 	account, err := this.DataStore.GetAccount(acctAddr, new(ethmpt.AccessListCache))
+	// account := acct.(*Account)
 	if account == nil || err != nil {
 		return nil, err
 	}
 
 	// Debugging only. Will panic if the proof is invalid.
-	// if data, _, err := account.IsStorageProvable(storageKeys[0]); err != nil || len(data) == 0 {
+	// if data, _, err := account.IsAccountStorageProvable(storageKeys[0]); err != nil || len(data) == 0 {
 	// 	panic(err)
 	// }
 
@@ -75,6 +76,7 @@ func (this *ProofProvider) GetProof(acctAddr ethcommon.Address, storageKeys []st
 	codeHash := account.GetCodeHash()
 
 	// Create the storage proof for each storage key.
+	var aggregatedErr error
 	storageProof := make([]StorageResult, len(storageKeys))
 	for i, hexKey := range storageKeys {
 		key, keyLength, err := decodeHash(hexKey)
@@ -114,7 +116,9 @@ func (this *ProofProvider) GetProof(acctAddr ethcommon.Address, storageKeys []st
 		v, _ := account.storageTrie.Get(storageKey)
 
 		decoded := []byte{}
-		rlp.DecodeBytes(v, &decoded)
+		if err := rlp.DecodeBytes(v, &decoded); err != nil {
+			aggregatedErr = errors.Join(aggregatedErr, err)
+		}
 		storageProof[i] = StorageResult{outputKey, (*hexutil.Big)(ethcommon.BytesToHash(decoded).Big()), proof}
 	}
 
@@ -147,12 +151,12 @@ func IsAccountProvable(addr string, acctRoot [32]byte, worldTrie *ethmpt.Trie) (
 			return nil, err
 		}
 	} else {
-		return nil, errors.New("Failed to find the proof")
+		return nil, errors.New("Failed to get the proof")
 	}
 
 	v, err := ethmpt.VerifyProof(acctRoot, keyHash, proofs)
 	if err != nil || len(v) == 0 {
-		return v, errors.New("Failed to find the proof")
+		return v, errors.New("Failed to verify the proof")
 	}
 	return v, nil
 }
