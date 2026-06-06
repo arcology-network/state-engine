@@ -44,9 +44,8 @@ func (this legacyStateCellWriter) Write(tx uint64, path string, T crdtcommon.CRD
 	return this.store.Write(tx, path, T, args...)
 }
 
-func (this legacyStateCellWriter) ReadCell(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell)) (any, *statecell.StateCell, bool) {
-	v, cell, err := this.store.ReadCell(tx, path, T, do)
-	return v, cell, err == nil
+func (this legacyStateCellWriter) ReadCell(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell)) (any, *statecell.StateCell, error) {
+	return this.store.ReadCell(tx, path, T, do)
 }
 
 var testAccount = statecommon.ETH_ACCOUNT_PREFIX + "0x" + strings.Repeat("1", 40)
