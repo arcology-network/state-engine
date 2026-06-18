@@ -2,7 +2,7 @@ module github.com/arcology-network/state-engine
 
 go 1.22
 
-// replace github.com/arcology-network/common-lib => ../common-lib/
+replace github.com/arcology-network/common-lib => ../common-lib/
 
 replace github.com/ethereum/go-ethereum v1.14.8 => github.com/arcology-network/concurrent-evm v0.0.0-20260606134708-2b2a978d283f
 
