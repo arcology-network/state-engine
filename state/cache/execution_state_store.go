@@ -337,15 +337,15 @@ func (this *ExecutionStateStore) getFromCommitted(tx uint64, path string, T any)
 }
 
 // Write applies newVal to path, tracks size delta, and invokes optional callback.
-func (this *ExecutionStateStore) Write(tx uint64, path string, newVal crdtcommon.CRDT, args ...any) (int64, error) {
+func (this *ExecutionStateStore) Write(tx uint64, path string, newVal crdtcommon.CRDT, arg any) (int64, error) {
 	if newVal != nil && newVal.TypeID() == uint8(reflect.Invalid) { // Neither a valid replacement nor a delete operation.
 		return 0, errors.New("Error: Unknown data type !")
 	}
 
 	cell, err := this.write(tx, path, newVal)
 	sizeDif := this.DiffSize(tx, path, newVal) // Update the size difference
-	if len(args) > 0 && args[0] != nil {
-		args[0].(func(*statecell.StateCell, int64))(cell, sizeDif) // Call the callback function if provided
+	if arg != nil {
+		arg.(func(*statecell.StateCell, int64))(cell, sizeDif) // Call the callback function if provided
 	}
 	return sizeDif, err
 }
