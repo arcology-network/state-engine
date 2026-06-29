@@ -528,3 +528,4 @@ func (*stubInvalidCRDT) Preload(string, any)       {}
 func (*stubInvalidCRDT) Hash() [32]byte            { return [32]byte{} }
 func (*stubInvalidCRDT) ShortHash() (uint64, bool) { return 0, false }
 func (*stubInvalidCRDT) Print()                    {}
+func (*stubInvalidCRDT) String() string            { return "" }
