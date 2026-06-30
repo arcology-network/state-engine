@@ -2,7 +2,7 @@ module github.com/arcology-network/state-engine
 
 go 1.22
 
-replace github.com/arcology-network/common-lib => ../common-lib/
+// replace github.com/arcology-network/common-lib => ../common-lib/
 
 replace github.com/ethereum/go-ethereum v1.14.8 => github.com/arcology-network/concurrent-evm v0.0.0-20260606134708-2b2a978d283f
 
@@ -20,7 +20,7 @@ require (
 )
 
 require (
-	github.com/arcology-network/common-lib v1.9.1-0.20260606140601-ac5107cbdcb0
+	github.com/arcology-network/common-lib v1.9.1-0.20260618021700-0214ff3b2803
 	github.com/cespare/xxhash v1.1.0
 )
 

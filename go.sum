@@ -8,8 +8,8 @@ github.com/VictoriaMetrics/fastcache v1.12.2 h1:N0y9ASrJ0F6h0QaC3o6uJb3NIZ9VKLjC
 github.com/VictoriaMetrics/fastcache v1.12.2/go.mod h1:AmC+Nzz1+3G2eCPapF6UcsnkThDcMsQicp4xDukwJYI=
 github.com/allegro/bigcache v1.2.1-0.20190218064605-e24eb225f156 h1:eMwmnE/GDgah4HI848JfFxHt+iPb26b4zyfspmqY0/8=
 github.com/allegro/bigcache v1.2.1-0.20190218064605-e24eb225f156/go.mod h1:Cb/ax3seSYIx7SuZdm2G2xzfwmv3TPSk2ucNfQESPXM=
-github.com/arcology-network/common-lib v1.9.1-0.20260606140601-ac5107cbdcb0 h1:ydJX3IBwPIAexynlciRKPuQ1q8qITCDPrVmP1sqSOt8=
-github.com/arcology-network/common-lib v1.9.1-0.20260606140601-ac5107cbdcb0/go.mod h1:I4VxoKc0OPhKq8Ls65DLvtBO7Hq/geuoFjWuLoRjMQg=
+github.com/arcology-network/common-lib v1.9.1-0.20260618021700-0214ff3b2803 h1:+stMHlrWRyvarmsGOYYJgGSfbTWzd06DUamD/C3/lc0=
+github.com/arcology-network/common-lib v1.9.1-0.20260618021700-0214ff3b2803/go.mod h1:I4VxoKc0OPhKq8Ls65DLvtBO7Hq/geuoFjWuLoRjMQg=
 github.com/arcology-network/concurrent-evm v0.0.0-20260606134708-2b2a978d283f h1:va3RG4DyndFWUEDlaSO42OV4SrAt3IG6xhjOTklJ9cQ=
 github.com/arcology-network/concurrent-evm v0.0.0-20260606134708-2b2a978d283f/go.mod h1:Ej3aJqwwdLnQE+kXqMuhzRmh/RMMnpJXctyPFqMEfRo=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
