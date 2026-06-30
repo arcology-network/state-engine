@@ -74,10 +74,6 @@ func (this *PathBuilder) UnderSenderPath(subpath string) string {
 
 // Derive a unique identifier (UID) from the address and selector.
 func DeriveEthCalleeUID(addr [20]byte, selector [4]byte) uint64 {
-	address := make([]byte, SHORT_CONTRACT_ADDRESS_LENGTH)
-	copy(address, addr[:])
-
-	selectorBytes := make([]byte, SELECTOR_LENGTH)
-	copy(selectorBytes, selector[:])
-	return uint64(codec.Uint64(0).FromBytes(append(address, selectorBytes...)))
+	return uint64(codec.Uint64(0).FromBytes(append(
+		addr[:SHORT_CONTRACT_ADDRESS_LENGTH], selector[:]...)))
 }

@@ -40,8 +40,8 @@ func (this legacyStateCellWriter) Read(tx uint64, path string, T crdtcommon.CRDT
 	return this.store.Read(tx, path, T)
 }
 
-func (this legacyStateCellWriter) Write(tx uint64, path string, T crdtcommon.CRDT, args ...any) (int64, error) {
-	return this.store.Write(tx, path, T, args...)
+func (this legacyStateCellWriter) Write(tx uint64, path string, T crdtcommon.CRDT, arg any) (int64, error) {
+	return this.store.Write(tx, path, T, arg)
 }
 
 func (this legacyStateCellWriter) ReadCell(tx uint64, path string, T crdtcommon.CRDT, do func(*statecell.StateCell)) (any, *statecell.StateCell, error) {
@@ -301,7 +301,7 @@ func TestExecutionStateStoreWriteReadAndCacheHelpers(t *testing.T) {
 	if !errors.Is(err, storageintf.ErrNotInParent) || missingValue != nil || missingCell == nil {
 		t.Fatal("expected missing lookup to return empty non-cached cell")
 	}
-	if _, err := store.Write(statecommon.SYSTEM, path, nil); err != nil {
+	if _, err := store.Write(statecommon.SYSTEM, path, nil, nil); err != nil {
 		t.Fatalf("expected delete write to succeed: %v", err)
 	}
 	if store.Has(path) {
@@ -311,7 +311,7 @@ func TestExecutionStateStoreWriteReadAndCacheHelpers(t *testing.T) {
 		t.Fatalf("expected nil diff after deletion, got %d", got)
 	}
 	bad := &stubInvalidCRDT{}
-	if _, err := store.Write(statecommon.SYSTEM, path, bad); err == nil {
+	if _, err := store.Write(statecommon.SYSTEM, path, bad, nil); err == nil {
 		t.Fatal("expected invalid CRDT type write to fail")
 	}
 	if store.Has(testPath("/not-present")) {
@@ -466,7 +466,7 @@ func TestExecutionStateStoreAdditionalBranches(t *testing.T) {
 	}
 
 	leafPath := testPath("/custom/leaf")
-	if _, err := store.Write(1, leafPath, noncommutative.NewString("x")); err == nil {
+	if _, err := store.Write(1, leafPath, noncommutative.NewString("x"), nil); err == nil {
 		t.Fatal("expected non-system write without parent to fail")
 	}
 
@@ -528,3 +528,4 @@ func (*stubInvalidCRDT) Preload(string, any)       {}
 func (*stubInvalidCRDT) Hash() [32]byte            { return [32]byte{} }
 func (*stubInvalidCRDT) ShortHash() (uint64, bool) { return 0, false }
 func (*stubInvalidCRDT) Print()                    {}
+func (*stubInvalidCRDT) String() string            { return "" }

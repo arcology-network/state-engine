@@ -187,7 +187,7 @@ func (this *ExecutionStateStore) PopBack(tx uint64, path string, T crdtcommon.CR
 		return nil, int64(_1stReadSize + _2ndReadSize), errors.New("Error: Empty container!")
 	}
 
-	writeDataSize, err := this.Write(tx, key, nil)
+	writeDataSize, err := this.Write(tx, key, nil, nil)
 	return value, int64(_1stReadSize+_2ndReadSize) + writeDataSize, err
 }
 
@@ -202,7 +202,7 @@ func (this *ExecutionStateStore) WriteAt(tx uint64, path string, idx uint64, T c
 	}
 
 	if key, readDataSize, err := this.getKeyByIdx(tx, path, idx); err == nil {
-		writeDataSize, err := this.Write(tx, key.(string), T)
+		writeDataSize, err := this.Write(tx, key.(string), T, nil)
 		return int64(readDataSize) + writeDataSize, err
 	} else {
 		return int64(readDataSize), err
