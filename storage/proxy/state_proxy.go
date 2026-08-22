@@ -20,6 +20,9 @@ package proxy
 import (
 	"errors"
 	"math"
+	"path/filepath"
+	"runtime"
+	"strings"
 
 	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	"github.com/arcology-network/common-lib/crdt/commutative"
@@ -80,7 +83,7 @@ func NewMemDBStoreProxy() *StorageProxy {
 	}
 }
 
-// File DB for execution storage, LevelDB for Ethereum storage.
+// File DB for execution storage, Pebble for Ethereum storage.
 func NewFileStoreProxy(ethDBPath, execDBPath string, cacheCap uint64, cacheConfig *hashdb.Config) *StorageProxy {
 	fileDB, err := filedb.NewFileDB(execDBPath, 2, 1)
 	if err != nil {
@@ -91,28 +94,65 @@ func NewFileStoreProxy(ethDBPath, execDBPath string, cacheCap uint64, cacheConfi
 	proxy := &StorageProxy{
 		platform:    statecommon.NewPlatform(),
 		CachedStore: livecache.NewLiveCache(cacheCap, fileDB, newLiveCacheCodec()),
-		ethStorage:  ethstg.NewLevelDBDataStore(ethDBPath, cacheConfig), //ethstg.NewParallelEthMemDataStore(),
+		ethStorage:  ethstg.NewPebbleDataStore(ethDBPath, cacheConfig),
 	}
 	return proxy
 }
 
-// File DB for execution storage, LevelDB for Ethereum storage.
+// Pebble databases for both execution and Ethereum storage.
 func NewPebbleDBProxy(ethDBPath, execDBPath string, cacheCap uint64, cacheConfig *hashdb.Config) *StorageProxy {
+	ethDBPath, execDBPath = independentPebblePaths(ethDBPath, execDBPath)
+
 	pebbleDB, err := pebbledb.NewPebbleDB(execDBPath)
 	if err != nil {
 		return nil
 	}
+	ethStorage := ethstg.NewPebbleDataStore(ethDBPath, cacheConfig)
+	if ethStorage == nil {
+		_ = pebbleDB.Close()
+		return nil
+	}
 
-	// backend := initByteLiveStorage(db)
 	proxy := &StorageProxy{
 		platform:    statecommon.NewPlatform(),
 		CachedStore: livecache.NewLiveCache(cacheCap, pebbleDB, newLiveCacheCodec()),
-		ethStorage:  ethstg.NewLevelDBDataStore(ethDBPath, cacheConfig), //ethstg.NewParallelEthMemDataStore(),
+		ethStorage:  ethStorage,
 	}
 	return proxy
 }
 
+// independentPebblePaths prevents the Arcology execution store and Ethereum
+// compatibility store from opening the same Pebble directory. Supplying one
+// shared root creates two sibling databases below it.
+func independentPebblePaths(ethDBPath, execDBPath string) (string, string) {
+	ethPath, ethErr := filepath.Abs(ethDBPath)
+	execPath, execErr := filepath.Abs(execDBPath)
+	samePath := ethErr == nil && execErr == nil && filepath.Clean(ethPath) == filepath.Clean(execPath)
+	if runtime.GOOS == "windows" && ethErr == nil && execErr == nil {
+		samePath = strings.EqualFold(filepath.Clean(ethPath), filepath.Clean(execPath))
+	}
+	if samePath {
+		return filepath.Join(ethPath, "eth"), filepath.Join(execPath, "arcology")
+	}
+	return ethDBPath, execDBPath
+}
+
 func (this *StorageProxy) EthStore() *ethstg.EthWorldState { return this.ethStorage } // Eth storage
+
+// Close releases the Ethereum trie database and any closeable execution
+// backend owned by the proxy.
+func (this *StorageProxy) Close() error {
+	var err error
+	if this.ethStorage != nil {
+		err = errors.Join(err, this.ethStorage.Close())
+	}
+	if this.CachedStore != nil {
+		if closer, ok := this.Backend().(interface{ Close() error }); ok {
+			err = errors.Join(err, closer.Close())
+		}
+	}
+	return err
+}
 
 func (this *StorageProxy) Preload(data []byte) any {
 	return this.ethStorage.Preload(data)
@@ -132,9 +172,15 @@ func (this *StorageProxy) SyncWriters() []storageintf.StoreWriter[*statecell.Sta
 
 func (this *StorageProxy) AsyncWriters() []storageintf.StoreWriter[*statecell.StateCell] {
 	return []storageintf.StoreWriter[*statecell.StateCell]{
-		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.NonTransientOnly),
+		ethstorage.NewEthStorageWriter(this.ethStorage, -1, this.PersistentEthOnly),
 		livebackend.NewLiveStorageWriter(this.CachedStore.Backend(), -1, this.NonTransientOnly, this.CachedStore.Codec()),
 	}
+}
+
+// PersistentEthOnly keeps Arcology-only CRDT paths in execution storage and
+// sends only Ethereum-native, non-transient state to the Geth compatibility DB.
+func (this *StorageProxy) PersistentEthOnly(tran *statecell.StateCell) bool {
+	return this.NonTransientOnly(tran) && this.EthOnly(tran)
 }
 
 // Filter out the transitions that are not needed to be persisted.
@@ -163,7 +209,6 @@ func (*StorageProxy) All(tran *statecell.StateCell) bool {
 
 // Set the version for the storage proxy, only works for snapshot storages.
 func (this *StorageProxy) SetVersion(_ [32]byte) error { return nil }
-
 
 func initLiveStorage(db commonintf.ReadWriteStore[string, []byte]) *cachedstore.CachedStore[string, crdtcommon.CRDT, string, []byte] {
 	codec := stgcodec.NewStorageCodec(

@@ -20,8 +20,8 @@ package ethstorage
 import (
 	"testing"
 
-	"github.com/arcology-network/common-lib/exp/slice"
 	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
@@ -29,161 +29,92 @@ import (
 )
 
 func TestHistoryStateProxyWithLvlDB(t *testing.T) {
-	tmpDir := t.TempDir()
-	tmpDBDir := tmpDir + "/eth_storage_test_db"
-	worldState := NewLevelDBDataStore(tmpDBDir, &hashdb.Config{CleanCacheSize: 1024 * 1024 * 100})
-	paraTrie := worldState.WorldStateTrie()
-
-	key0 := []byte("test_key_0")
-	value0 := []byte("test_value_0")
-
-	key1 := []byte("test_key_1")
-	value1 := []byte("test_value_1")
-
-	// Update the trie with two key-value pairs in parallel
-	errs := paraTrie.ParallelUpdate([][]byte{key0, key1}, [][]byte{value0, value1})
-	if _, err := slice.FindFirstIf(errs, func(i int, err error) bool { return err != nil }); err != nil {
-		t.Fatalf("Failed to update the trie: %v", *err)
+	worldState := NewPebbleDataStore(t.TempDir()+"/eth_storage_test_db", &hashdb.Config{CleanCacheSize: 100 * 1024 * 1024})
+	if worldState == nil {
+		t.Fatal("failed to create Pebble world state")
 	}
+	defer worldState.Close()
 
-	// Now retrieve the values
-	outVals, err := paraTrie.ParallelGet([][]byte{key0, key1})
+	address := ethcommon.HexToAddress("0x1234")
+	slot := ethcommon.HexToHash("0x01")
+	value0 := ethcommon.HexToHash("0x10")
+	stateDB := worldState.trieDB.StateDB()
+	stateDB.SetBalance(address, uint256.NewInt(42), tracing.BalanceChangeUnspecified)
+	stateDB.SetNonce(address, 1, tracing.NonceChangeUnspecified)
+	stateDB.SetState(address, slot, value0)
+
+	root0, err := worldState.trieDB.Commit(0)
 	if err != nil {
-		t.Fatalf("Failed to get values from the trie: %v", err)
+		t.Fatal(err)
 	}
-
-	if outVals[0] == nil || string(outVals[0]) != string(value0) {
-		t.Fatalf("Failed to get the correct value for key0: expected %s, got %s", string(value0), string(outVals[0]))
-	}
-
-	if outVals[1] == nil || string(outVals[1]) != string(value1) {
-		t.Fatalf("Failed to get the correct value for key1: expected %s, got %s", string(value1), string(outVals[1]))
-	}
-
-	root0, newParaTrie, err := worldState.trieDB.Commit(paraTrie, 0)
+	reopened, err := LoadEthTrieByRoot(worldState.EthDB(), root0)
 	if err != nil {
-		t.Fatalf("Failed to commit the trie: %v", err)
+		t.Fatal(err)
+	}
+	if got := reopened.trieDB.StateDB().GetState(address, slot); got != value0 {
+		t.Fatalf("storage mismatch: have %x want %x", got, value0)
 	}
 
-	// Reopen the trie by its root
-	reopened, err := LoadEthTrieByRoot(worldState.trieDB.mainTrieDB, root0)
+	value1 := ethcommon.HexToHash("0x20")
+	reopened.trieDB.StateDB().SetState(address, slot, value1)
+	root1, err := reopened.trieDB.Commit(1)
 	if err != nil {
-		t.Fatalf("Failed to load trie by root: %v", err)
+		t.Fatal(err)
 	}
-
-	outVals, err = reopened.WorldStateTrie().ParallelGet([][]byte{key0, key1})
+	if root1 == root0 {
+		t.Fatal("root did not change after storage update")
+	}
+	second, err := LoadEthTrieByRoot(worldState.EthDB(), root1)
 	if err != nil {
-		t.Fatalf("Failed to get values from the trie: %v", err)
+		t.Fatal(err)
 	}
-
-	if outVals[0] == nil || string(outVals[0]) != string(value0) {
-		t.Fatalf("Failed to get the correct value for key0: expected %s, got %s", string(value0), string(outVals[0]))
-	}
-
-	if outVals[1] == nil || string(outVals[1]) != string(value1) {
-		t.Fatalf("Failed to get the correct value for key1: expected %s, got %s", string(value1), string(outVals[1]))
-	}
-
-	// // Update the trie again with two more key-value pairs in parallel
-	key2 := []byte("test_key_0")
-	value2 := []byte("test_value_01")
-
-	key3 := []byte("test_key_3")
-	value3 := []byte("test_value_3")
-
-	errs = newParaTrie.ParallelUpdate([][]byte{key2, key3}, [][]byte{value2, value3})
-	if _, err := slice.FindFirstIf(errs, func(i int, err error) bool { return err != nil }); err != nil {
-		t.Fatalf("Failed to update the trie: %v", *err)
-	}
-
-	_2ndRoot, _, err := worldState.trieDB.Commit(newParaTrie, 0)
-	if err != nil {
-		t.Fatalf("Failed to commit the trie: %v", err)
-	}
-
-	// Reopen the second trie by its root
-	_2nd_reopened, err := LoadEthTrieByRoot(worldState.trieDB.mainTrieDB, _2ndRoot)
-	if err != nil {
-		t.Fatalf("Failed to load trie by root: %v", err)
-	}
-
-	outVals, err = _2nd_reopened.WorldStateTrie().ParallelGet([][]byte{key2, key3})
-	if err != nil {
-		t.Fatalf("Failed to get values from the trie: %v", err)
-	}
-
-	if outVals[0] == nil || string(outVals[0]) != string(value2) {
-		t.Fatalf("Failed to get the correct value for key2: expected %s, got %s", string(value2), string(outVals[0]))
-	}
-
-	if outVals[1] == nil || string(outVals[1]) != string(value3) {
-		t.Fatalf("Failed to get the correct value for key3: expected %s, got %s", string(value3), string(outVals[1]))
+	if got := second.trieDB.StateDB().GetState(address, slot); got != value1 {
+		t.Fatalf("updated storage mismatch: have %x want %x", got, value1)
 	}
 }
 
 func TestAccountCode(t *testing.T) {
-	state := &ethtypes.StateAccount{
+	accountState := &ethtypes.StateAccount{
 		Nonce:    111,
 		Balance:  uint256.NewInt(0),
-		Root:     ethcommon.Hash{}, // merkle root of the storage trie
+		Root:     ethcommon.Hash{},
 		CodeHash: []byte{9, 8, 0, 7},
 	}
-
-	if encoded, err := rlp.EncodeToBytes(state); err != nil {
-		t.Error("Error: Should be empty!!")
-	} else {
-		var acct ethtypes.StateAccount
-		if err := rlp.DecodeBytes(encoded, &acct); err != nil {
-			t.Fatalf("failed to decode account state: %v", err)
-		}
-
-		if state.Balance.Uint64() != acct.Balance.Uint64() {
-			t.Error("Error: Blance mismatched!!")
-		}
-	}
-
-	acct := &Account{
-		addr:         ethcommon.BytesToAddress([]byte("3456")),
-		StateAccount: *state,
-		code:         []byte{1, 2, 3, 4},
-	}
-	buffer := acct.Encode()
-
-	decodeAcct, err := (&Account{}).Decode(buffer)
+	encoded, err := rlp.EncodeToBytes(accountState)
 	if err != nil {
-		t.Error("Error: Failed to decode account!!")
+		t.Fatal(err)
 	}
-	if state.Balance.Uint64() != decodeAcct.Balance.Uint64() {
-		t.Error("Error: Blance mismatched!!")
+	var decoded ethtypes.StateAccount
+	if err := rlp.DecodeBytes(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if accountState.Balance.Uint64() != decoded.Balance.Uint64() {
+		t.Fatal("balance mismatch")
+	}
+
+	account := &Account{addr: ethcommon.BytesToAddress([]byte("3456")), StateAccount: *accountState, code: []byte{1, 2, 3, 4}}
+	decodedAccount, err := (&Account{}).Decode(account.Encode())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accountState.Balance.Uint64() != decodedAccount.Balance.Uint64() {
+		t.Fatal("decoded account balance mismatch")
 	}
 }
 
-func TestPersistToEthStoreSkipsNilAndCommitsDuplicateAccounts(t *testing.T) {
+func TestPersistToEthStoreRecordsCommittedRoot(t *testing.T) {
 	worldState := NewParallelEthMemDataStore()
-	address := ethcommon.BytesToAddress([]byte("duplicate-account"))
+	defer worldState.Close()
+	address := ethcommon.BytesToAddress([]byte("committed-account"))
+	worldState.trieDB.StateDB().SetBalance(address, uint256.NewInt(1), tracing.BalanceChangeUnspecified)
 
-	acct0 := NewAccountWithSharedCache(address, worldState.trieDB, EmptyAccountState())
-	acct1 := NewAccountWithSharedCache(address, worldState.trieDB, EmptyAccountState())
-	acct0.trieDirty = true
-	acct1.trieDirty = true
-
-	if err := worldState.persistToEthStore(7, []*Account{acct0, nil, acct1}); err != nil {
-		t.Fatalf("expected persistToEthStore to handle nil and duplicate accounts: %v", err)
+	if err := worldState.persistToEthStore(7, nil); err != nil {
+		t.Fatal(err)
 	}
-
-	if acct0.trieDirty {
-		t.Fatal("expected first duplicate account to be committed")
-	}
-
-	if acct1.trieDirty {
-		t.Fatal("expected second duplicate account to be committed")
-	}
-
 	if got := worldState.GetRootHash(7); got != worldState.Root() {
-		t.Fatal("expected block root to be recorded for the committed block")
+		t.Fatal("block root was not recorded")
 	}
-
-	if got := len(worldState.blockRoots); got != 1 {
-		t.Fatalf("expected one recorded block root, got %d", got)
+	if len(worldState.blockRoots) != 1 {
+		t.Fatalf("expected one block root, got %d", len(worldState.blockRoots))
 	}
 }

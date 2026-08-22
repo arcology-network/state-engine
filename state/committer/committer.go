@@ -95,6 +95,7 @@ func (this *StateCommitter) New(args ...any) *StateCommitter {
 func (this *StateCommitter) Store() storageintf.ReadOnlyStore[string, crdtcommon.CRDT] {
 	return this.readonlyStore
 }
+
 func (this *StateCommitter) SetStore(store storageintf.ReadOnlyStore[string, crdtcommon.CRDT]) { // Testing only
 	this.readonlyStore = store
 }

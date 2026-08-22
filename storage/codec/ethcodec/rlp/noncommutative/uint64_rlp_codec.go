@@ -28,6 +28,7 @@ func (this *Uint64RLP) Encode() ([]byte, error) {
 	return rlp.EncodeToBytes(*this)
 	// return codec.Uint64(this.Uint64).Encode()
 }
+
 func (this *Uint64RLP) Decode(buffer []byte) (any, error) {
 	var v Uint64RLP
 	if err := rlp.DecodeBytes(buffer, &v); err != nil {

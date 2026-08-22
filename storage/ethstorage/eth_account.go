@@ -15,10 +15,6 @@
  *   along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-// Account wraps an Ethereum-compatible state account and its storage trie, providing
-// helpers for reading, updating, and committing the account’s balance, nonce, code,
-// and storage values against the shard-backed trie database.
-
 package ethstorage
 
 import (
@@ -27,393 +23,331 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/arcology-network/common-lib/exp/slice"
-
 	"github.com/arcology-network/common-lib/codec"
-	common "github.com/arcology-network/common-lib/common"
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	commutative "github.com/arcology-network/common-lib/crdt/commutative"
 	noncommutative "github.com/arcology-network/common-lib/crdt/noncommutative"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	stgintf "github.com/arcology-network/common-lib/storage/interface"
-
-	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecommon "github.com/arcology-network/state-engine/common"
-
 	ethrlp "github.com/arcology-network/state-engine/storage/codec/ethcodec/rlp"
 	ethcommon "github.com/ethereum/go-ethereum/common"
-	hexutil "github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
-	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
 	ethmpt "github.com/ethereum/go-ethereum/trie"
-	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
-	"golang.org/x/crypto/sha3"
 )
 
+// Account is Arcology's account-facing compatibility view. Canonical account,
+// code, and storage data are owned by the backend StateDB.
 type Account struct {
 	addr ethcommon.Address
 
-	ethtypes.StateAccount
+	types.StateAccount
 	code []byte
 
-	storageTrie *ethmpt.Trie // account storage trie
+	storageTrie state.Trie
 	backend     *EthShardTrieDB
 	err         error
-
-	trieDirty bool
 }
 
-// The diskdbs need to able to handle concurrent accesses themselve
-func NewAccount(addr ethcommon.Address, backend *EthShardTrieDB, state types.StateAccount) *Account {
-	return &Account{
-		addr:         addr,
-		trieDirty:    false,
-		backend:      backend,
-		StateAccount: state,
-	}
+func NewAccount(addr ethcommon.Address, backend *EthShardTrieDB, account types.StateAccount) *Account {
+	return &Account{addr: addr, backend: backend, StateAccount: account}
 }
 
-// The diskdbs need to able to handle concurrent accesses themselve
-func NewAccountWithSharedCache(addr ethcommon.Address, backend *EthShardTrieDB, state types.StateAccount) *Account {
-	trie, err := LoadTrie(backend.mainTrieDB, state.Root)
-	return &Account{
-		addr:        addr,
-		storageTrie: trie,
-		trieDirty:   false,
-
-		backend:      backend,
-		StateAccount: state,
-		err:          err,
-	}
+func NewAccountWithSharedCache(addr ethcommon.Address, backend *EthShardTrieDB, account types.StateAccount) *Account {
+	return NewAccount(addr, backend, account)
 }
 
 func EmptyAccountState() types.StateAccount {
-	return ethtypes.StateAccount{
-		Nonce:    0,
+	return types.StateAccount{
 		Balance:  uint256.NewInt(0),
 		Root:     types.EmptyRootHash,
 		CodeHash: codec.Bytes32(crypto.Keccak256Hash(nil)).Encode(),
 	}
 }
 
-func LoadTrie(trieDb *triedb.Database, root ethcommon.Hash) (*trie.Trie, error) {
-	// ethdb := tridb.NewParallelDatabase(diskdbs, nil)
-	trie, err := ethmpt.NewParallel(ethmpt.TrieID(root), trieDb)
-	return trie, err
+func (a *Account) refresh() {
+	if a.backend == nil || a.backend.StateDB() == nil || !a.backend.StateDB().Exist(a.addr) {
+		return
+	}
+	stateDB := a.backend.StateDB()
+	a.Nonce = stateDB.GetNonce(a.addr)
+	a.Balance = stateDB.GetBalance(a.addr).Clone()
+	a.Root = stateDB.GetStorageRoot(a.addr)
+	a.CodeHash = stateDB.GetCodeHash(a.addr).Bytes()
+	a.code = stateDB.GetCode(a.addr)
 }
 
-func (this *Account) GetState(key [32]byte) []byte {
-	data, _ := this.storageTrie.Get(key[:])
-	return data
+func (a *Account) GetState(key [32]byte) []byte {
+	return storageWordToRLP(a.backend.StateDB().GetState(a.addr, key))
 }
 
-func (this *Account) SetAddress(addr ethcommon.Address) { this.addr = addr }
-func (this *Account) Address() ethcommon.Address        { return this.addr }
-func (this *Account) Trie() *ethmpt.Trie                { return this.storageTrie }
+func (a *Account) SetAddress(addr ethcommon.Address) { a.addr = addr }
+func (a *Account) Address() ethcommon.Address        { return a.addr }
+func (a *Account) Trie() state.Trie                  { return a.storageTrie }
 
-func (this *Account) GetStorageRoot() [32]byte {
-	if this.storageTrie == nil {
+func (a *Account) GetStorageRoot() [32]byte {
+	if a.backend == nil {
 		return types.EmptyRootHash
 	}
-	return this.storageTrie.Hash()
+	return a.backend.StateDB().GetStorageRoot(a.addr)
 }
 
-func (this *Account) GetCode() []byte {
-	return this.code
+func (a *Account) GetCode() []byte {
+	if a.backend != nil {
+		return a.backend.StateDB().GetCode(a.addr)
+	}
+	return a.code
 }
 
-func (this *Account) GetCodeHash() [32]byte {
-	if this.storageTrie == nil {
-		return crypto.Keccak256Hash(nil) // so the codeHash is the hash of an empty byteslice.
+func (a *Account) GetCodeHash() [32]byte {
+	if a.backend != nil {
+		return a.backend.StateDB().GetCodeHash(a.addr)
 	}
-	return codec.Bytes32{}.Decode(this.CodeHash).(codec.Bytes32)
+	return ethcommon.BytesToHash(a.CodeHash)
 }
 
-// The function is used to prove the storage of an account. It only works with
-// NATIVE storage for now.
-func (this *Account) IsAccountStorageProvable(key string) ([]byte, []string, error) {
-	decoded, _, err := decodeHash(key)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	keyBytes := crypto.Keccak256(decoded[:])
-	data, err := this.storageTrie.Get(keyBytes) // Get the storage value
-
-	var proofs proofList
-	if len(data) > 0 && err == nil {
-		if err := this.storageTrie.Prove(keyBytes, &proofs); err != nil { // Get the storage proof and save it to the proof DB
-			return nil, proofs, err
-		}
-	} else {
-		return nil, proofs, errors.New("Failed to find the proof for storage key: " + key)
-	}
-
-	proofdb, err := ProofArrayToDB(proofs)
-	if err != nil {
-		return nil, proofs, err
-	}
-
-	v, err := ethmpt.VerifyProof(this.StateAccount.Root, keyBytes, proofdb)
-	if err != nil || !bytes.Equal(v, data) {
-		return nil, proofs, errors.New("Failed to find the proof for storage key: " + key)
-	}
-	return data, proofs, nil
-}
-
-// The function parses the key in a forward slash separated format into a hex
-// string that can be accepted by the storage trie.
-func (this *Account) ToStorageKey(key string) []byte {
-	if k := statecommon.GetPathUnder(key, "/storage/native/"); len(k) > 0 {
-		kstr, err := hexutil.Decode(k) // For native storage, the key is hex encoded.
+// storageSlot converts an Arcology path to the unhashed EVM storage key that
+// StateDB expects. StateTrie performs the Keccak hashing exactly once.
+func (a *Account) storageSlot(path string) (ethcommon.Hash, error) {
+	if key := statecommon.GetPathUnder(path, "/storage/native/"); len(key) > 0 {
+		decoded, err := hexutil.Decode(key)
 		if err != nil {
-			panic(err)
+			return ethcommon.Hash{}, err
 		}
-		return crypto.Keccak256(kstr) // For native storage, the key is the hash of the key with prefix.
+		return ethcommon.BytesToHash(decoded), nil
 	}
-	return this.Hash([]byte(key)) // For non-native storage, the key is the hash of the key with prefix.
+	return crypto.Keccak256Hash([]byte(path)), nil
 }
 
-// Check if the path is the root of the account.
-func (this *Account) isAccountRoot(path string) bool {
+// ToStorageKey returns the hashed MPT key used by proof verification. Reads and
+// writes must pass storageSlot to StateDB and let Geth hash it once.
+func (a *Account) ToStorageKey(path string) []byte {
+	slot, err := a.storageSlot(path)
+	if err != nil {
+		panic(err)
+	}
+	return crypto.Keccak256(slot.Bytes())
+}
+
+func (a *Account) isAccountRoot(path string) bool {
 	return len(path) == statecommon.ETH_ACCOUNT_FULL_LENGTH+1
 }
 
-func (this *Account) Has(path string) bool {
-	if this.isAccountRoot(path) {
-		return true // Account itself
+func (a *Account) Has(path string) bool {
+	if a.backend == nil {
+		return false
 	}
-
-	if strings.HasSuffix(path, statecommon.PATH_BALANCE) ||
-		strings.HasSuffix(path, statecommon.PATH_NONCE) {
+	stateDB := a.backend.StateDB()
+	if !stateDB.Exist(a.addr) {
+		return false
+	}
+	// Arcology account namespaces are virtual when the canonical state lives in
+	// Geth. They are not trie values, but execution writes require these parent
+	// paths to exist before attaching profile or storage entries beneath them.
+	if strings.HasSuffix(path, statecommon.PATH_FUNC_PROFILE) ||
+		strings.HasSuffix(path, statecommon.PATH_STORAGE_ROOT) ||
+		strings.HasSuffix(path, statecommon.PATH_STORAGE_CONTAINER) ||
+		strings.HasSuffix(path, statecommon.PATH_STORAGE_NATIVE) {
 		return true
 	}
-
-	if strings.HasSuffix(path, statecommon.PATH_CODE) {
-		return len(this.code) > 0
+	if a.isAccountRoot(path) || strings.HasSuffix(path, statecommon.PATH_BALANCE) || strings.HasSuffix(path, statecommon.PATH_NONCE) {
+		return true
 	}
-
-	buffer, _ := this.storageTrie.Get(this.ToStorageKey(path))
-	return len(buffer) > 0
+	if strings.HasSuffix(path, statecommon.PATH_CODE) {
+		return len(stateDB.GetCode(a.addr)) > 0
+	}
+	slot, err := a.storageSlot(path)
+	return err == nil && stateDB.GetState(a.addr, slot) != (ethcommon.Hash{})
 }
 
-// func (this *Account) GetAs(path string, T any) (any, error) {
-// 	// Special handling for balance.
-// 	if strings.HasSuffix(path, statecommon.PATH_BALANCE) {
-// 		balance, _ := uint256.FromBig(this.StateAccount.Balance.ToBig())
-// 		v := commutative.NewUnboundedU256()
-// 		v.SetValue(*balance)
-// 		return v, nil
-// 	}
-
-// 	// Special handling for nonce.
-// 	if strings.HasSuffix(path, statecommon.PATH_NONCE) {
-// 		v := commutative.NewUnboundedUint64()
-// 		v.SetValue(this.StateAccount.Nonce)
-// 		return v, nil
-// 	}
-
-// 	// Special handling for code.
-// 	if strings.HasSuffix(path, statecommon.PATH_CODE) {
-// 		var err error
-// 		if this.code == nil {
-// 			if this.code, err = this.backend.ShardFromKey(path).Get(this.CodeHash); err != nil {
-// 				return nil, err
-// 			}
-// 		}
-// 		return noncommutative.NewBytes(this.code), nil
-// 	}
-
-// 	// A normal storage value.
-// 	buffer, err := this.storageTrie.Get(this.ToStorageKey(path))
-// 	if len(buffer) == 0 {
-// 		return nil, nil
-// 	}
-
-// 	if T == nil { // A deletion
-// 		return T, nil
-// 	}
-
-// 	// Decode the value based on the type T representing the CRDT type.
-// 	return ethrlp.RlpCodec{}.Decode(path, buffer, T), err
-// }
-
-func (this *Account) Get(path string) (any, error) {
-	// Special handling for balance.
+func (a *Account) Get(path string) (any, error) {
+	if a.backend == nil {
+		return nil, stgintf.ErrNotFound
+	}
+	stateDB := a.backend.StateDB()
 	if strings.HasSuffix(path, statecommon.PATH_BALANCE) {
-		balance, _ := uint256.FromBig(this.StateAccount.Balance.ToBig())
-		v := commutative.NewUnboundedU256()
-		v.SetValue(*balance)
-		return v, nil
+		value := commutative.NewUnboundedU256()
+		value.SetValue(*stateDB.GetBalance(a.addr).Clone())
+		return value, nil
 	}
-
-	// Special handling for nonce.
 	if strings.HasSuffix(path, statecommon.PATH_NONCE) {
-		v := commutative.NewUnboundedUint64()
-		v.SetValue(this.StateAccount.Nonce)
-		return v, nil
+		value := commutative.NewUnboundedUint64()
+		value.SetValue(stateDB.GetNonce(a.addr))
+		return value, nil
 	}
-
-	// Special handling for code.
 	if strings.HasSuffix(path, statecommon.PATH_CODE) {
-		var err error
-		if this.code == nil {
-			if this.code, err = this.backend.ShardFromKey(path).Get(this.CodeHash); err != nil {
-				return nil, err
-			}
+		code := stateDB.GetCode(a.addr)
+		if len(code) == 0 {
+			return nil, stgintf.ErrNotFound
 		}
-		return noncommutative.NewBytes(this.code), nil
+		return noncommutative.NewBytes(code), nil
 	}
-
-	// Eth Get() returns an empty byte slice if the key is not found, but a lot of existing code relies on nil to
-	// indicate the absence of a value, so we return nil here for better compatibility.
-	if v, err := this.storageTrie.Get(this.ToStorageKey(path)); len(v) > 0 {
-		return v, err
+	slot, err := a.storageSlot(path)
+	if err != nil {
+		return nil, err
 	}
-	return nil, stgintf.ErrNotFound
+	word := stateDB.GetState(a.addr, slot)
+	if word == (ethcommon.Hash{}) {
+		return nil, stgintf.ErrNotFound
+	}
+	return storageWordToRLP(word), nil
 }
 
-// Update the account's storage trie with the given keys and values.
-func (this *Account) UpdateAccountStorageTrie(keys []string, typedVals []crdtcommon.CRDT) error {
-	if pos, _ := slice.FindFirstIf(keys,
-		func(_ int, k string) bool {
-			return len(k) == statecommon.ETH_ACCOUNT_FULL_LENGTH+1
-		}); pos >= 0 {
-		slice.RemoveAt(&keys, pos)
-		slice.RemoveAt(&typedVals, pos)
-	}
+func storageWordToRLP(word ethcommon.Hash) []byte {
+	content := bytes.TrimLeft(word.Bytes(), "\x00")
+	encoded, _ := rlp.EncodeToBytes(content)
+	return encoded
+}
 
-	if pos, _ := slice.FindFirstIf(keys,
-		func(_ int, k string) bool {
-			return strings.HasSuffix(k, statecommon.PATH_NONCE)
-		}); pos >= 0 {
-		this.Nonce = typedVals[pos].Value().(uint64)
-		slice.RemoveAt(&keys, pos)
-		slice.RemoveAt(&typedVals, pos)
+func storageValueToWord(path string, value crdtcommon.CRDT) (ethcommon.Hash, error) {
+	if value == nil {
+		return ethcommon.Hash{}, nil
 	}
-
-	if pos, _ := slice.FindFirstIf(keys,
-		func(_ int, k string) bool {
-			return strings.HasSuffix(k, statecommon.PATH_BALANCE)
-		}); pos >= 0 {
-		balance := typedVals[pos].Value().(uint256.Int)
-		this.Balance = balance.Clone()
-		slice.RemoveAt(&keys, pos)
-		slice.RemoveAt(&typedVals, pos)
+	encoded, err := (ethrlp.RlpCodec{}).Encode(path, value)
+	if err != nil {
+		return ethcommon.Hash{}, err
 	}
+	_, content, rest, err := rlp.Split(encoded)
+	if err != nil {
+		return ethcommon.Hash{}, err
+	}
+	if len(rest) != 0 {
+		return ethcommon.Hash{}, errors.New("storage RLP contains trailing data")
+	}
+	if len(content) > ethcommon.HashLength {
+		return ethcommon.Hash{}, fmt.Errorf("storage value at %q is %d bytes; EVM storage permits at most 32", path, len(content))
+	}
+	return ethcommon.BytesToHash(content), nil
+}
 
-	if pos, _ := slice.FindFirstIf(keys, func(_ int, k string) bool {
-		return strings.HasSuffix(k, statecommon.PATH_CODE)
-	}); pos >= 0 {
-		this.code = typedVals[pos].Value().(codec.Bytes)
-		this.StateAccount.CodeHash = this.Hash(this.code)
-		if err := this.backend.ShardFromKey(keys[pos]).Put(this.CodeHash, this.code); err != nil { // Save to DB directly, only for code
-			return err // failed to save the code
+// UpdateAccountStorageTrie translates an accepted account transition group to
+// StateDB mutations. Calls must be serialized because StateDB is not thread-safe.
+func (a *Account) UpdateAccountStorageTrie(keys []string, values []crdtcommon.CRDT) error {
+	if len(keys) != len(values) {
+		return fmt.Errorf("account update key/value mismatch: %d != %d", len(keys), len(values))
+	}
+	stateDB := a.backend.StateDB()
+	if !stateDB.Exist(a.addr) {
+		stateDB.CreateAccount(a.addr)
+	}
+	for i, path := range keys {
+		value := values[i]
+		switch {
+		case a.isAccountRoot(path):
+			continue
+		case strings.HasSuffix(path, statecommon.PATH_NONCE):
+			if value == nil {
+				stateDB.SetNonce(a.addr, 0, tracing.NonceChangeUnspecified)
+				continue
+			}
+			stateDB.SetNonce(a.addr, value.Value().(uint64), tracing.NonceChangeUnspecified)
+		case strings.HasSuffix(path, statecommon.PATH_BALANCE):
+			if value == nil {
+				stateDB.SetBalance(a.addr, uint256.NewInt(0), tracing.BalanceChangeUnspecified)
+				continue
+			}
+			balance := value.Value().(uint256.Int)
+			stateDB.SetBalance(a.addr, balance.Clone(), tracing.BalanceChangeUnspecified)
+		case strings.HasSuffix(path, statecommon.PATH_CODE):
+			if value == nil {
+				stateDB.SetCode(a.addr, nil)
+				continue
+			}
+			stateDB.SetCode(a.addr, []byte(value.Value().(codec.Bytes)))
+		default:
+			slot, err := a.storageSlot(path)
+			if err != nil {
+				return err
+			}
+			word, err := storageValueToWord(path, value)
+			if err != nil {
+				return err
+			}
+			stateDB.SetState(a.addr, slot, word)
 		}
-		slice.RemoveAt(&keys, pos)
-		slice.RemoveAt(&typedVals, pos)
 	}
-	this.trieDirty = len(keys) > 0
-
-	// Encode the keys
-	numThd := common.IfThen(len(keys) < 1024, 4, 8)
-	encodedKeys := slice.ParallelTransform(keys, numThd, func(i int, _ string) []byte {
-		return this.ToStorageKey(keys[i]) // Remove the prefix to get the keys.
-	})
-
-	// Encode the values
-	encodedVals := slice.ParallelTransform(typedVals, numThd, func(i int, _ crdtcommon.CRDT) []byte {
-		return common.IfThenDo1st(typedVals[i] != nil, func() []byte {
-			// return typedVals[i].StorageEncode(keys[i])
-			v, _ := ethrlp.RlpCodec{}.Encode(keys[i], typedVals[i])
-			return v
-		}, []byte{})
-	})
-
-	slice.SortBy1st(encodedKeys, encodedVals, func(v0, v1 []byte) bool {
-		return string(v0) < string(v1)
-	})
-
-	// Update the storage trie with the encoded keys and values.
-	errs := this.storageTrie.ParallelUpdate(encodedKeys, encodedVals)
-	if _, err := slice.FindFirstIf(errs, func(_ int, v error) bool { return v != nil }); err != nil {
-		return *err
+	if err := stateDB.Error(); err != nil {
+		return err
 	}
-
-	this.Root = this.storageTrie.Hash()
 	return nil
 }
 
-// Write the account changes to theirs Eth Trie
-func (this *Account) ApplyChanges(transitions [][]*statecell.StateCell, getter func([]*statecell.StateCell) (string, crdtcommon.CRDT)) ([]string, []crdtcommon.CRDT, error) {
+func (a *Account) ApplyChanges(transitions [][]*statecell.StateCell, getter func([]*statecell.StateCell) (string, crdtcommon.CRDT)) ([]string, []crdtcommon.CRDT, error) {
 	keys := make([]string, len(transitions))
-	typedVals := slice.Transform(transitions, func(i int, vals []*statecell.StateCell) crdtcommon.CRDT {
-		_, v := getter(vals)
-		keys[i] = *vals[i].GetPath()
-		return v
-	})
-
-	this.err = this.UpdateAccountStorageTrie(keys, typedVals)
-	return keys, typedVals, this.err
+	values := make([]crdtcommon.CRDT, len(transitions))
+	for i, transition := range transitions {
+		_, values[i] = getter(transition)
+		keys[i] = *transition[i].GetPath()
+	}
+	a.err = a.UpdateAccountStorageTrie(keys, values)
+	return keys, values, a.err
 }
 
-func (this *Account) Encode() []byte {
-	encoded, _ := rlp.EncodeToBytes(&this.StateAccount)
+func (a *Account) Encode() []byte {
+	a.refresh()
+	encoded, _ := rlp.EncodeToBytes(&a.StateAccount)
 	return encoded
 }
 
 func (*Account) Decode(buffer []byte) (*Account, error) {
-	var acctState types.StateAccount
-	if err := rlp.DecodeBytes(buffer, &acctState); err != nil {
+	var account types.StateAccount
+	if err := rlp.DecodeBytes(buffer, &account); err != nil {
 		return nil, err
 	}
-	return &Account{StateAccount: acctState}, nil
+	return &Account{StateAccount: account}, nil
 }
 
-// CollectDirtyNodes collects the changes and groups them into
-// batches based on the shard database they belong to.
-// func (this *Account) CollectDirtyNodes(block uint64) error {
-// 	var err error
-// 	if this.trieDirty {
-// 		_, this.storageTrie, err = this.backend.Commit(this.storageTrie, block) // Commit the change to the storage trie.
-// 		this.trieDirty = false
-// 	}
-// 	return err // Write to DB
-// }
+// Commit is retained for source compatibility. StateDB commits all account and
+// storage tries atomically through EthShardTrieDB.Commit.
+func (a *Account) Commit(uint64) error { return a.err }
 
-// Write the DB
-func (this *Account) Commit(block uint64) error {
-	var err error
-	if this.trieDirty {
-		_, this.storageTrie, err = this.backend.Commit(this.storageTrie, block) // Commit the change to the storage trie.
-		this.trieDirty = false
+func (a *Account) IsAccountStorageProvable(key string) ([]byte, []string, error) {
+	slot, _, err := decodeHash(key)
+	if err != nil {
+		return nil, nil, err
 	}
-	return err // Write to DB
+	if a.storageTrie == nil {
+		return nil, nil, errors.New("storage trie is unavailable")
+	}
+	hashedKey := crypto.Keccak256(slot.Bytes())
+	data, err := a.storageTrie.GetStorage(a.addr, slot.Bytes())
+	if err != nil || len(data) == 0 {
+		return nil, nil, errors.New("failed to find storage key: " + key)
+	}
+	var proof proofList
+	if err := a.storageTrie.Prove(hashedKey, &proof); err != nil {
+		return nil, proof, err
+	}
+	proofDB, err := ProofArrayToDB(proof)
+	if err != nil {
+		return nil, proof, err
+	}
+	encoded, _ := rlp.EncodeToBytes(data)
+	verified, err := ethmpt.VerifyProof(a.GetStorageRoot(), hashedKey, proofDB)
+	if err != nil || !bytes.Equal(verified, encoded) {
+		return nil, proof, errors.New("failed to verify storage key: " + key)
+	}
+	return encoded, proof, nil
 }
 
-func (this *Account) Hash(key []byte) []byte {
-	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write([]byte(key))
-	sum := hasher.Sum(nil)
-	return sum
+func (a *Account) Print() {
+	a.refresh()
+	fmt.Println("addr: ", a.addr)
+	PrintStateAccount(a.StateAccount)
+	fmt.Println("code: ", a.code)
+	fmt.Println("storageTrie: ", a.storageTrie)
+	fmt.Println("err: ", a.err)
 }
 
-func (this *Account) Print() {
-	fmt.Println("addr: ", this.addr)
-	PrintStateAccount(this.StateAccount)
-	fmt.Println("code: ", this.code)
-	fmt.Println("storageTrie: ", this.storageTrie)
-	// fmt.Println("ethdb: ", this.ethdb)
-	// fmt.Println("diskdbShards: ", this.diskdbShards)
-	fmt.Println("err: ", this.err)
-}
-
-func PrintStateAccount(state ethtypes.StateAccount) {
-	fmt.Println("Nonce: ", state.Nonce)
-	fmt.Println("Balance: ", state.Balance)
-	fmt.Println("Root: ", state.Root)
-	fmt.Println("CodeHash: ", state.CodeHash)
+func PrintStateAccount(account types.StateAccount) {
+	fmt.Println("Nonce: ", account.Nonce)
+	fmt.Println("Balance: ", account.Balance)
+	fmt.Println("Root: ", account.Root)
+	fmt.Println("CodeHash: ", account.CodeHash)
 }

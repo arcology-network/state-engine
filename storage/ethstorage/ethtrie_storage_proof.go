@@ -22,18 +22,17 @@ import (
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb/memorydb"
-	"github.com/ethereum/go-ethereum/rlp"
 	ethmpt "github.com/ethereum/go-ethereum/trie"
 	tridb "github.com/ethereum/go-ethereum/triedb"
-	// ethapi "github.com/ethereum/go-ethereum/internal/ethapi"
 )
 
 type ProofProvider struct {
 	root        [32]byte
-	totalVisits uint64 // Total number of times all the merkle trees have been accessed since this Merkle tree is created.
-	visits      int    // Number of times this merkle Merkle has been accessed.
+	totalVisits uint64
+	visits      int
 	DataStore   *EthWorldState
 	Ethdb       *tridb.Database
 }
@@ -43,120 +42,79 @@ func NewProofProvider(ethdb *tridb.Database, root [32]byte) (*ProofProvider, err
 	if err != nil {
 		return nil, err
 	}
-
-	return &ProofProvider{
-		root,
-		1,
-		1,
-		store,
-		ethdb,
-	}, nil
+	return &ProofProvider{root: root, totalVisits: 1, visits: 1, DataStore: store, Ethdb: ethdb}, nil
 }
 
-func (this *ProofProvider) Root() ethcommon.Hash { this.visits++; return this.root }
+func (p *ProofProvider) Root() ethcommon.Hash {
+	p.visits++
+	return p.root
+}
 
-// GetProof returns a merkle proof for the given account and storage keys.
-// Storage keys have to be in hex format with 0x prefix.
-func (this *ProofProvider) GetProof(acctAddr ethcommon.Address, storageKeys []string) (*AccountResult, error) {
-	this.visits++
-
-	// Get the account either from the cache or from the database.
-	account, err := this.DataStore.GetAccount(acctAddr, new(ethmpt.AccessListCache))
-	// account := acct.(*Account)
-	if account == nil || err != nil {
+func (p *ProofProvider) GetProof(address ethcommon.Address, storageKeys []string) (*AccountResult, error) {
+	p.visits++
+	account, err := p.DataStore.GetAccount(address, nil)
+	if err != nil || account == nil {
 		return nil, err
 	}
 
-	// Debugging only. Will panic if the proof is invalid.
-	// if data, _, err := account.IsAccountStorageProvable(storageKeys[0]); err != nil || len(data) == 0 {
-	// 	panic(err)
-	// }
-
-	storageHash := account.GetStorageRoot()
-	codeHash := account.GetCodeHash()
-
-	// Create the storage proof for each storage key.
-	var aggregatedErr error
 	storageProof := make([]StorageResult, len(storageKeys))
-	for i, hexKey := range storageKeys {
-		key, keyLength, err := decodeHash(hexKey)
+	for i, encodedKey := range storageKeys {
+		slot, keyLength, err := decodeHash(encodedKey)
 		if err != nil {
 			return nil, err
 		}
-
-		// Output key encoding is a bit special: if the input was a 32-byte hash, it is
-		// returned as such. Otherwise, we apply the QUANTITY encoding mandated by the
-		// JSON-RPC spec for getProof. This behavior exists to preserve backwards
-		// compatibility with older client versions.
-		var outputKey string
-		if keyLength != 32 {
-			outputKey = hexutil.EncodeBig(key.Big())
-		} else {
-			outputKey = hexutil.Encode(key[:])
+		outputKey := hexutil.Encode(slot[:])
+		if keyLength != ethcommon.HashLength {
+			outputKey = hexutil.EncodeBig(slot.Big())
 		}
 
 		if account.storageTrie == nil {
-			storageProof[i] = StorageResult{outputKey, &hexutil.Big{}, []string{}}
+			storageProof[i] = StorageResult{Key: outputKey, Value: &hexutil.Big{}, Proof: []string{}}
 			continue
 		}
-
-		storageKey := crypto.Keccak256(key.Bytes()) // Calculate the key for retrieving the value from the trie.
-
 		var proof proofList
-		if err := account.storageTrie.Prove(storageKey, &proof); err != nil {
+		if err := account.storageTrie.Prove(crypto.Keccak256(slot.Bytes()), &proof); err != nil {
 			return nil, err
 		}
-		// VerifyProof(account.storageTrie.Hash(), proof, key[:]) // Debugging only. Will panic if the proof is invalid.
-
-		/* ETH code:
-		value := (*hexutil.Big)(statedb.GetState(address, key).Big())
-		storageProof[i] = StorageResult{outputKey, value, proof}
-		*/
-
-		v, _ := account.storageTrie.Get(storageKey)
-
-		decoded := []byte{}
-		if err := rlp.DecodeBytes(v, &decoded); err != nil {
-			aggregatedErr = errors.Join(aggregatedErr, err)
+		value := p.DataStore.trieDB.StateDB().GetState(address, slot)
+		storageProof[i] = StorageResult{
+			Key:   outputKey,
+			Value: (*hexutil.Big)(value.Big()),
+			Proof: proof,
 		}
-		storageProof[i] = StorageResult{outputKey, (*hexutil.Big)(ethcommon.BytesToHash(decoded).Big()), proof}
 	}
 
-	// create the account Proof
-	accountProof, proofErr := this.DataStore.GetAccountProof(acctAddr) // Get the account proof
-	if proofErr != nil {
-		return nil, proofErr
+	accountProof, err := p.DataStore.GetAccountProof(address)
+	if err != nil {
+		return nil, err
 	}
-
-	VerifyProof(this.DataStore.worldStateTrie.Hash(), accountProof, acctAddr[:]) // Debugging only. Will panic if the proof is invalid.
+	VerifyProof(p.root, accountProof, address[:])
+	account.refresh()
 
 	return &AccountResult{
-		Address:      acctAddr,
+		Address:      address,
 		AccountProof: accountProof,
-		Balance:      (*hexutil.Big)(account.StateAccount.Balance.ToBig()),
-		CodeHash:     codeHash,
-		Nonce:        hexutil.Uint64(account.StateAccount.Nonce),
-		StorageHash:  storageHash,
+		Balance:      (*hexutil.Big)(account.Balance.ToBig()),
+		CodeHash:     account.GetCodeHash(),
+		Nonce:        hexutil.Uint64(account.Nonce),
+		StorageHash:  account.GetStorageRoot(),
 		StorageProof: storageProof,
-	}, nil // state.Error()
+	}, nil
 }
 
-func IsAccountProvable(addr string, acctRoot [32]byte, worldTrie *ethmpt.Trie) ([]byte, error) {
-	addrBytes, _ := hexutil.Decode(addr) // Decode to remove the 0x prefix
-	keyHash := crypto.Keccak256(addrBytes)
-
-	proofs := memorydb.New()
-	if trie, _ := worldTrie.Get(keyHash); len(trie) > 0 {
-		if err := worldTrie.Prove(keyHash, proofs); err != nil {
-			return nil, err
-		}
-	} else {
-		return nil, errors.New("Failed to get the proof")
+func IsAccountProvable(addr string, accountRoot [32]byte, worldTrie state.Trie) ([]byte, error) {
+	address, err := hexutil.Decode(addr)
+	if err != nil {
+		return nil, err
 	}
-
-	v, err := ethmpt.VerifyProof(acctRoot, keyHash, proofs)
-	if err != nil || len(v) == 0 {
-		return v, errors.New("Failed to verify the proof")
+	key := crypto.Keccak256(address)
+	proof := memorydb.New()
+	if err := worldTrie.Prove(key, proof); err != nil {
+		return nil, err
 	}
-	return v, nil
+	value, err := ethmpt.VerifyProof(accountRoot, key, proof)
+	if err != nil || len(value) == 0 {
+		return value, errors.New("failed to verify account proof")
+	}
+	return value, nil
 }

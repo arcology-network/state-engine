@@ -514,10 +514,12 @@ func (*stubInvalidCRDT) Get() (any, uint32, uint32)         { return nil, 0, 0 }
 func (*stubInvalidCRDT) Set(any, any) (any, uint32, uint32, uint32, error) {
 	return nil, 0, 0, 0, nil
 }
+
 func (*stubInvalidCRDT) CopyTo(any) (any, uint32, uint32, uint32) { return nil, 0, 0, 0 }
 func (*stubInvalidCRDT) ApplyDelta([]crdtcommon.CRDT) (crdtcommon.CRDT, int, error) {
 	return nil, 0, nil
 }
+
 func (*stubInvalidCRDT) IsDeletable(any, any) bool { return false }
 func (*stubInvalidCRDT) MemSize() uint64           { return 0 }
 func (*stubInvalidCRDT) Size() uint64              { return 0 }

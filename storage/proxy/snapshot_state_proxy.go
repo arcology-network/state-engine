@@ -35,14 +35,14 @@ func NewEthStateSnapshot(rootHash [32]byte, trieDB *ethstg.EthShardTrieDB) (*Eth
 		return nil, err
 	}
 
-	return &EthStateSnapshot{	
+	return &EthStateSnapshot{
 		EthWorldState: ethWorldState,
 	}, nil
 }
 
 func (this *EthStateSnapshot) GetWriters() []storageintf.StoreWriter[*statecell.StateCell] {
 	return []storageintf.StoreWriter[*statecell.StateCell]{
-		ethstorage.NewEthStorageWriter(this.EthWorldState, -1, (&StorageProxy{}).NonTransientOnly),
+		ethstorage.NewEthStorageWriter(this.EthWorldState, -1, (&StorageProxy{}).PersistentEthOnly),
 	}
 }
 

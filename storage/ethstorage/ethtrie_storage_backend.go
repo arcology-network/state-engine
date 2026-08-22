@@ -18,74 +18,72 @@
 package ethstorage
 
 import (
-	"errors"
-
-	"github.com/VictoriaMetrics/fastcache"
-	"github.com/arcology-network/common-lib/exp/slice"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/ethdb"
-	ethmpt "github.com/ethereum/go-ethereum/trie"
-	"github.com/ethereum/go-ethereum/trie/trienode"
-	triedb "github.com/ethereum/go-ethereum/triedb"
-	"github.com/ethereum/go-ethereum/triedb/hashdb"
-
-	// ethmpt "github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/ethdb/pebble"
 	tridb "github.com/ethereum/go-ethereum/triedb"
+	"github.com/ethereum/go-ethereum/triedb/hashdb"
 )
 
 // EthStroageBackend represents an Ethereum account with its associated
 // storage trie and underlying databases.
 type EthShardTrieDB struct {
+	backend      *GethStateBackend
 	mainTrieDB   *tridb.Database    // main ETH trie db
 	mainDBConfig *hashdb.Config     // config for the main ETH trie db
-	diskShardDBs [16]ethdb.Database // 16 LevelDB shards
-	encodedCache *fastcache.Cache   // A shared cache by shard DBs for encoded nodes
+	diskShardDBs [16]ethdb.Database // Compatibility views routed to the Pebble state database.
 	err          error
 }
 
 // NewEthShardTrieMemDB creates a new EthShardTrieDB with in-memory databases for both
 // the main trie and the shard databases.
 func NewEthShardTrieMemDB(mainTrieDbConfig *hashdb.Config) *EthShardTrieDB {
-	diskdbs := [16]ethdb.Database{}
-	slice.Fill(diskdbs[:], rawdb.NewMemoryDatabase())
-	db := triedb.NewParallelDatabase(diskdbs, nil)
-
 	if mainTrieDbConfig == nil {
 		mainTrieDbConfig = &hashdb.Config{CleanCacheSize: 1024 * 1024 * 100} // 100MB of the shared cache
 	}
-	return &EthShardTrieDB{
-		mainDBConfig: mainTrieDbConfig,
-		mainTrieDB:   db,
-		diskShardDBs: diskdbs,
-		encodedCache: fastcache.New(mainTrieDbConfig.CleanCacheSize),
-		err:          nil,
+	backend, err := NewGethStateBackend(
+		rawdb.NewMemoryDatabase(),
+		&tridb.Config{HashDB: mainTrieDbConfig},
+		common.Hash{},
+	)
+	if err != nil {
+		return &EthShardTrieDB{mainDBConfig: mainTrieDbConfig, err: err}
 	}
+	return newEthShardTrieDB(backend, mainTrieDbConfig)
 }
 
-// NewEthShardLvlDB creates a new EthShardTrieDB with LevelDB databases for the
-// shard databases stored in the specified directory.
-func NewEthShardLvlDB(dir string, mainTrieDbConfig *hashdb.Config) (*EthShardTrieDB, error) {
-	leveldb, err := rawdb.NewLevelDBDatabase(dir, 256, 16, "temp", false)
+// NewEthShardPebbleDB creates a persistent Ethereum trie database backed by
+// Pebble in the specified directory.
+func NewEthShardPebbleDB(dir string, mainTrieDbConfig *hashdb.Config) (*EthShardTrieDB, error) {
+	diskDB, err := pebble.New(dir, 256, 16, "state-engine/ethstorage", false)
 	if err != nil {
 		return nil, err
 	}
 
-	diskdbs := [16]ethdb.Database{}
-	slice.Fill(diskdbs[:], leveldb)
 	if mainTrieDbConfig == nil {
 		mainTrieDbConfig = &hashdb.Config{CleanCacheSize: 1024 * 1024 * 100} // 100MB of the shared cache
 	}
+	disk := rawdb.NewDatabase(diskDB)
+	backend, err := NewGethStateBackend(disk, &tridb.Config{HashDB: mainTrieDbConfig}, common.Hash{})
+	if err != nil {
+		_ = disk.Close()
+		return nil, err
+	}
+	return newEthShardTrieDB(backend, mainTrieDbConfig), nil
+}
 
-	mainTrieDB := triedb.NewParallelDatabase(diskdbs, nil)
-	return &EthShardTrieDB{
-		mainDBConfig: mainTrieDbConfig,
-		mainTrieDB:   mainTrieDB,
-		diskShardDBs: diskdbs,
-		encodedCache: fastcache.New(mainTrieDbConfig.CleanCacheSize),
-		err:          nil,
-	}, nil
+func newEthShardTrieDB(backend *GethStateBackend, config *hashdb.Config) *EthShardTrieDB {
+	db := &EthShardTrieDB{
+		backend:      backend,
+		mainTrieDB:   backend.TrieDB(),
+		mainDBConfig: config,
+	}
+	for i := range db.diskShardDBs {
+		db.diskShardDBs[i] = backend.disk
+	}
+	return db
 }
 
 func (this *EthShardTrieDB) MainTrieDB() *tridb.Database { return this.mainTrieDB }
@@ -98,29 +96,10 @@ func (this *EthShardTrieDB) ShardFromKey(key string) ethdb.Database {
 	return this.diskShardDBs[key[0]>>4]
 }
 
-// Commit finalizes the trie and persists the changes to the underlying databases.
-func (this *EthShardTrieDB) Commit(trie *ethmpt.Trie, block uint64) (common.Hash, *ethmpt.Trie, error) {
-	root, nodes, err := trie.Commit(false) // Finalized the trie
-	if err != nil {
-		return common.Hash{}, nil, errors.Join(errors.New("trie.Commit:"), err)
-	}
-
-	// Persist the trie nodes to the database
-	if nodes != nil {
-		// Apply changes to the trie database backend by MOVING to DB dirty node set
-		if err := this.mainTrieDB.Update(root, types.EmptyRootHash, block, trienode.NewWithNodeSet(nodes), nil); err != nil {
-			return common.Hash{}, nil, errors.Join(errors.New("ethdb.Update:"), err)
-		}
-		// Commit will be later called OUTSIDE to write to disk.
-	}
-
-	// Create a new trie for further updates.
-	newTrie, err := ethmpt.NewParallel(ethmpt.TrieID(root), this.mainTrieDB)
-	if err != nil {
-		err = errors.Join(errors.New("ethmpt.NewParallel:"), err)
-	}
-
-	// mux.Lock()
-	// defer mux.Unlock()
-	return root, newTrie, err
+func (this *EthShardTrieDB) Commit(block uint64) (common.Hash, error) {
+	return this.backend.Commit(block)
 }
+
+func (this *EthShardTrieDB) StateDB() *state.StateDB         { return this.backend.StateDB() }
+func (this *EthShardTrieDB) StateDatabase() *state.CachingDB { return this.backend.Database() }
+func (this *EthShardTrieDB) Root() common.Hash               { return this.backend.Root() }

@@ -19,6 +19,7 @@ package proxy
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -140,6 +141,7 @@ func TestNewPebbleDBProxySetGetHasAndReadBackend(t *testing.T) {
 	if proxy == nil {
 		t.Fatal("NewPebbleDBProxy returned nil")
 	}
+	defer proxy.Close()
 	if proxy.Backend() == nil || proxy.Cache() == nil || proxy.EthStore() == nil {
 		t.Fatal("expected Pebble proxy stores to be initialized")
 	}
@@ -185,6 +187,28 @@ func TestNewPebbleDBProxySetGetHasAndReadBackend(t *testing.T) {
 	v, _, _ = gotTyped.Get()
 	if v.(uint64) != 77 {
 		t.Fatalf("expected decoded value 77, got %v", v)
+	}
+}
+
+func TestNewPebbleDBProxySeparatesSharedRoot(t *testing.T) {
+	root := t.TempDir()
+	proxy := NewPebbleDBProxy(root, root, 128, nil)
+	if proxy == nil {
+		t.Fatal("NewPebbleDBProxy returned nil")
+	}
+	if err := proxy.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, directory := range []string{"eth", "arcology"} {
+		path := filepath.Join(root, directory)
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("expected independent %s Pebble directory: %v", directory, err)
+		}
+		if !info.IsDir() {
+			t.Fatalf("expected %s to be a directory", path)
+		}
 	}
 }
 
