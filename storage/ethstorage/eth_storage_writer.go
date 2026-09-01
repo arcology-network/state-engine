@@ -21,6 +21,7 @@ import (
 	"errors"
 	"runtime"
 
+	crdtcommon "github.com/arcology-network/common-lib/crdt/common"
 	statecell "github.com/arcology-network/common-lib/crdt/statecell"
 	"github.com/arcology-network/common-lib/exp/associative"
 	"github.com/arcology-network/common-lib/exp/slice"
@@ -59,17 +60,29 @@ func (this *EthStorageWriter) Precommit(_ bool) error {
 		this.ethStore.accountCache[(**pair).Address()] = (*pair)
 	})
 
+	// Preparing the accepted transitions is independent per account. Keep that
+	// work parallel, but do not mutate StateDB from these workers: StateDB owns
+	// a shared journal and is not safe for concurrent writes. IntermediateRoot
+	// later feeds the accumulated account mutations to the trie's transparent
+	// parallel batch updater.
+	keysByAccount := make([][]string, len(accounts))
+	valuesByAccount := make([][]crdtcommon.CRDT, len(accounts))
 	slice.ParallelForeach(accounts, runtime.NumCPU(), func(i int, acctTrans **associative.Pair[*Account, []*statecell.StateCell]) {
 		if len((*acctTrans).Second) == 0 {
 			return // All removed
 		}
+		keysByAccount[i], valuesByAccount[i] = statecell.StateCells((*acctTrans).Second).KVs()
+	})
 
-		keys, vals := statecell.StateCells((*acctTrans).Second).KVs()                // Get all transitions under the same account
-		err := this.EthIndexer.dirtyAccounts[i].UpdateAccountStorageTrie(keys, vals) //
+	for i := range accounts {
+		if len(keysByAccount[i]) == 0 {
+			continue
+		}
+		err := this.EthIndexer.dirtyAccounts[i].UpdateAccountStorageTrie(keysByAccount[i], valuesByAccount[i])
 		if err != nil {
 			this.ethStore.dbErr = errors.Join(this.ethStore.dbErr, err)
 		}
-	})
+	}
 
 	this.ethStore.WriteWorldTrie(this.EthIndexer.dirtyAccounts)     // Update the world trie
 	this.EthIndexer = NewEthIndexer(this.ethStore, -1, this.filter) // Reset the indexer with a default version number.
